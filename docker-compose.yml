@@ -1,0 +1,39 @@
+services:
+  dragonfly:
+    image: hmtanbir/dragonfly:latest
+    container_name: proxy-dragonfly
+    command: >
+      dragonfly
+      --requirepass=${DRAGONFLY_PASSWORD:-proxysecret}
+      --cache_mode=true
+      --maxmemory=512mb
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "echo PING | timeout 2 sh -c 'exec 3<>/dev/tcp/127.0.0.1/6379 && cat >&3 && head -c 7 <&3' | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  proxy-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxy-api
+    environment:
+      REDIS_URL: redis://:${DRAGONFLY_PASSWORD:-proxysecret}@dragonfly:6379
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN is required}
+      PORT: "3000"
+      RUST_LOG: info
+    ports:
+      - "3000:3000"
+    depends_on:
+      dragonfly:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dragonfly-data:
