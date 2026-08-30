@@ -88,6 +88,22 @@ The service will start on `http://localhost:7654` with:
 
 ---
 
+## 📚 Swagger & OpenAPI Documentation
+
+Ruxy provides an interactive **Swagger UI** out of the box for testing and exploring API endpoints:
+
+- **Swagger UI Interface**: `http://localhost:7654/swagger-ui/`
+- **Raw OpenAPI 3.0 JSON Spec**: `http://localhost:7654/api-docs/openapi.json`
+
+### 🔑 Using Swagger with Authentication:
+1. Open `http://localhost:7654/swagger-ui/` in your browser.
+2. Click the **Authorize** 🔓 button at the top right.
+3. In the `api_key (apiKey)` modal, enter your configured `ADMIN_TOKEN` (e.g. `change-me-super-secret-token`).
+4. Click **Authorize** and then **Close**.
+5. You can now execute and test all admin endpoints directly through Swagger UI.
+
+---
+
 ## 📡 API Reference & Admin CRUD
 
 All administrative endpoints require the `x-api-key` header matching your configured `ADMIN_TOKEN`.
@@ -98,6 +114,7 @@ All administrative endpoints require the `x-api-key` header matching your config
 | :--- | :--- | :--- | :---: |
 | `GET` | `/health` | Service health status | No |
 | `GET` | `/swagger-ui/` | Interactive Swagger API docs | No |
+| `GET` | `/api-docs/openapi.json` | Raw OpenAPI 3.0 specification | No |
 | `POST` | `/admin/routes` | Create or update route mapping | **Yes** |
 | `GET` | `/admin/routes` | List all dynamic route mappings | **Yes** |
 | `GET` | `/admin/routes/{*key}` | Fetch details of a specific route | **Yes** |
