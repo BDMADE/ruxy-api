@@ -1,8 +1,6 @@
 mod admin;
 mod proxy;
 mod state;
-
-use crate::state::{ApiResponse, RouteMapping};
 use axum::{
     middleware,
     response::IntoResponse,
@@ -29,6 +27,8 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
+use crate::state::{ApiItemResponse, ApiListResponse, ApiResponse, RouteEntry};
+
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Proxy API Service", description = "Reverse proxy with dynamic Redis-backed route mappings. Public traffic hits /:key which is forwarded to the mapped target URL. The origin stays hidden."),
@@ -38,7 +38,7 @@ impl utoipa::Modify for SecurityAddon {
         admin::list_routes,
         admin::delete_route
     ),
-    components(schemas(RouteMapping, ApiResponse)),
+    components(schemas(RouteEntry, ApiItemResponse, ApiListResponse, ApiResponse)),
     modifiers(&SecurityAddon)
 )]
 struct ApiDoc;
@@ -76,8 +76,8 @@ async fn main() {
     let admin_router = Router::new()
         .route("/", post(admin::create_route))
         .route("/", get(admin::list_routes))
-        .route("/{key}", get(admin::get_route))
-        .route("/{key}", delete(admin::delete_route))
+        .route("/{*key}", get(admin::get_route))
+        .route("/{*key}", delete(admin::delete_route))
         .layer(middleware::from_fn_with_state(
             app_state.clone(),
             auth_middleware,
@@ -92,7 +92,9 @@ async fn main() {
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".into());
     let addr = format!("0.0.0.0:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind failed");
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("bind failed");
     tracing::info!("listening on {addr}");
     axum::serve(listener, app).await.unwrap();
 }
@@ -112,7 +114,10 @@ async fn auth_middleware(
     if !ok {
         return (
             StatusCode::UNAUTHORIZED,
-            axum::Json(ApiResponse { success: false, message: "Unauthorized".into() }),
+            axum::Json(ApiResponse {
+                success: false,
+                message: "Unauthorized".into(),
+            }),
         )
             .into_response();
     }

@@ -25,7 +25,11 @@ pub async fn proxy_handler(
     request: Request<Body>,
 ) -> impl IntoResponse {
     let raw_path = uri.path().trim_start_matches('/');
-    if raw_path.is_empty() || raw_path.starts_with("admin") || raw_path.starts_with("swagger") || raw_path.starts_with("api-docs") {
+    if raw_path.is_empty()
+        || raw_path.starts_with("admin")
+        || raw_path.starts_with("swagger")
+        || raw_path.starts_with("api-docs")
+    {
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("content-type", "application/json")

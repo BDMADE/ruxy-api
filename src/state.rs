@@ -9,12 +9,27 @@ pub struct AppState {
     pub client: reqwest::Client,
 }
 
-#[derive(Deserialize, Serialize, ToSchema)]
-pub struct RouteMapping {
-    /// Public proxy key, e.g. "1234"
+#[derive(Deserialize, Serialize, ToSchema, Clone, Debug)]
+pub struct RouteEntry {
+    /// Identifier or key, e.g. "https://yeapin.xyz" or "1234"
     pub key: String,
-    /// Full target URL stored in Redis, e.g. "https://automation1.bdmade.com/1234"
-    pub target: String,
+    /// Destination URL value (accepts both "value" and "target")
+    #[serde(alias = "target")]
+    pub value: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ApiItemResponse {
+    pub data: Option<RouteEntry>,
+    pub message: String,
+    pub status: u16,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ApiListResponse {
+    pub data: Vec<RouteEntry>,
+    pub message: String,
+    pub status: u16,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -37,10 +52,10 @@ pub async fn get_target(state: &AppState, key: &str) -> Option<String> {
     val
 }
 
-pub async fn list_keys(state: &AppState) -> Vec<String> {
+pub async fn list_routes(state: &AppState) -> Vec<RouteEntry> {
     let mut conn = state.redis.clone();
     let mut cursor: u64 = 0;
-    let mut keys: Vec<String> = Vec::new();
+    let mut entries: Vec<RouteEntry> = Vec::new();
 
     loop {
         let (next_cursor, batch): (u64, Vec<String>) = match redis::cmd("SCAN")
@@ -56,8 +71,17 @@ pub async fn list_keys(state: &AppState) -> Vec<String> {
             Err(_) => break,
         };
 
-        for k in batch {
-            keys.push(k.trim_start_matches("route:").to_string());
+        for full_key in batch {
+            let key = full_key.trim_start_matches("route:").to_string();
+            let val: Option<String> = redis::cmd("GET")
+                .arg(&full_key)
+                .query_async(&mut conn)
+                .await
+                .ok();
+
+            if let Some(value) = val {
+                entries.push(RouteEntry { key, value });
+            }
         }
 
         if next_cursor == 0 {
@@ -66,6 +90,6 @@ pub async fn list_keys(state: &AppState) -> Vec<String> {
         cursor = next_cursor;
     }
 
-    keys.sort();
-    keys
+    entries.sort_by(|a, b| a.key.cmp(&b.key));
+    entries
 }

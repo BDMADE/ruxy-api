@@ -1,28 +1,55 @@
-FROM rust:1.96-alpine AS builder
-WORKDIR /build
+# syntax=docker/dockerfile:1.7
+# ------------------------------------------------------------------------------
+# 1. Builder Stage
+# ------------------------------------------------------------------------------
+FROM rust:alpine AS builder
+WORKDIR /app
 
-RUN apk add --no-cache musl-dev pkgconfig ca-certificates
+# Install build dependencies
+RUN apk add --no-cache musl-dev pkgconfig ca-certificates curl
 
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
-    CARGO_TERM_COLOR=never \
-    RUSTFLAGS="-C target-feature=+crt-static"
+# Leverage BuildKit cache mounts for Cargo dependencies and Git index caching
+COPY Cargo.toml Cargo.lock ./
 
-COPY Cargo.toml Cargo.lock* ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release && rm -rf src target/release/deps/proxy_api*
+# Create dummy source and build dependencies layer with cache mount
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    mkdir -p src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release --target=$(rustc -vV | sed -n 's|host: ||p') && \
+    rm -rf src
 
+# Copy real source code and perform the final static build
 COPY src ./src
-RUN touch src/main.rs && cargo build --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    touch src/main.rs && \
+    TARGET=$(rustc -vV | sed -n 's|host: ||p') && \
+    cargo build --release --target=$TARGET && \
+    cp /app/target/$TARGET/release/proxy-api /proxy-api
 
+# ------------------------------------------------------------------------------
+# 2. Production Minimal Runtime Stage
+# ------------------------------------------------------------------------------
 FROM scratch AS runtime
 
+# Copy SSL root certificates for outbound HTTPS requests (e.g., reqwest / rustls)
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /build/target/release/proxy-api /proxy-api
 
-ENV PORT=3000 \
+# Copy the compiled statically linked binary
+COPY --from=builder /proxy-api /proxy-api
+
+# Set default production environment variables
+ENV PORT=7654 \
     RUST_LOG=info
 
-EXPOSE 3000
+# Document application port
+EXPOSE 7654
 
+# Run as non-root user (nobody:nobody)
 USER 65534:65534
 
+# Execute the application
 ENTRYPOINT ["/proxy-api"]
