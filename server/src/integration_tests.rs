@@ -52,6 +52,7 @@ mod tests {
         let app_state = AppState {
             redis: conn,
             admin_token: "test-secret".to_string(),
+            admin_password: "test-secret".to_string(),
             client: http_client,
             slack_webhook_url: None, // No real slack calls during tests
             slack_rate_limits: Arc::new(DashMap::new()),
