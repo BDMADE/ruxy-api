@@ -26,9 +26,12 @@ pub async fn proxy_handler(
 ) -> impl IntoResponse {
     let raw_path = uri.path().trim_start_matches('/');
     if raw_path.is_empty()
-        || raw_path.starts_with("admin")
-        || raw_path.starts_with("swagger")
-        || raw_path.starts_with("api-docs")
+        || raw_path == "admin"
+        || raw_path.starts_with("admin/")
+        || raw_path == "swagger"
+        || raw_path.starts_with("swagger/")
+        || raw_path == "api-docs"
+        || raw_path.starts_with("api-docs/")
     {
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -44,19 +47,26 @@ pub async fn proxy_handler(
     };
 
     let target = match get_target(&state, key).await {
-        Some(t) => t,
-        None => {
+        Ok(Some(t)) => t.trim_end_matches('/').to_string(),
+        Ok(None) => {
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("content-type", "application/json")
                 .body(Body::from("{\"error\":\"route not found\"}"))
                 .unwrap();
         }
+        Err(e) => {
+            tracing::error!("Redis error for key '{}': {}", key, e);
+            return Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .header("content-type", "application/json")
+                .body(Body::from("{\"error\":\"service unavailable\"}"))
+                .unwrap();
+        }
     };
 
     let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
-    let target_trimmed = target.trim_end_matches('/');
-    let url = format!("{target_trimmed}{subpath}{query}");
+    let url = format!("{target}{subpath}{query}");
 
     let mut req = state.client.request(
         reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET),
@@ -71,28 +81,17 @@ pub async fn proxy_handler(
         req = req.header(n, value);
     }
 
-    let body = request.into_body();
-    let bytes = match axum::body::to_bytes(body, 10 * 1024 * 1024).await {
-        Ok(b) => b,
-        Err(_) => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("content-type", "application/json")
-                .body(Body::from("{\"error\":\"invalid body\"}"))
-                .unwrap();
-        }
-    };
-    if !bytes.is_empty() {
-        req = req.body(bytes.to_vec());
-    }
+    req = req.body(reqwest::Body::wrap_stream(
+        request.into_body().into_data_stream(),
+    ));
 
     let resp = match req.send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("forward failed for '{key}' -> {url}: {e}");
-            crate::state::notify_slack(
-                state.client.clone(),
-                state.slack_webhook_url.clone(),
+            crate::state::notify_slack_debounced(
+                &state,
+                key,
                 "Upstream Forward Failed (502 Bad Gateway)".into(),
                 format!(
                     "*Route Key:* `{}`\n*Target URL:* `{}`\n*Method:* `{}`\n*Error Details:* ```{}```",

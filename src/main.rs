@@ -1,6 +1,10 @@
 mod admin;
 mod proxy;
 mod state;
+
+#[cfg(test)]
+mod integration_tests;
+
 use axum::{
     middleware,
     response::IntoResponse,
@@ -43,8 +47,18 @@ use crate::state::{ApiItemResponse, ApiListResponse, ApiResponse, RouteEntry};
 )]
 struct ApiDoc;
 
-async fn health() -> impl IntoResponse {
-    "OK"
+async fn health(
+    axum::extract::State(state): axum::extract::State<state::AppState>,
+) -> impl IntoResponse {
+    let mut conn = state.redis.clone();
+    match redis::cmd("PING").query_async::<String>(&mut conn).await {
+        Ok(pong) if pong == "PONG" => (axum::http::StatusCode::OK, "OK").into_response(),
+        _ => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "REDIS_UNAVAILABLE",
+        )
+            .into_response(),
+    }
 }
 
 #[tokio::main]
@@ -64,34 +78,27 @@ async fn main() {
 
     let http_client = reqwest::Client::builder()
         .pool_max_idle_per_host(20)
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .expect("failed to build http client");
 
     let slack_webhook_url = std::env::var("SLACK_WEBHOOK_URL").ok();
+    let slack_rate_limit_seconds = std::env::var("SLACK_RATE_LIMIT_SECONDS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(60);
 
     let app_state = state::AppState {
         redis: conn,
         admin_token,
         client: http_client,
         slack_webhook_url,
+        slack_rate_limits: std::sync::Arc::new(dashmap::DashMap::new()),
+        slack_rate_limit_seconds,
     };
 
-    let admin_router = Router::new()
-        .route("/", post(admin::create_route))
-        .route("/", get(admin::list_routes))
-        .route("/{*key}", get(admin::get_route))
-        .route("/{*key}", delete(admin::delete_route))
-        .layer(middleware::from_fn_with_state(
-            app_state.clone(),
-            auth_middleware,
-        ));
-
-    let app = Router::new()
-        .route("/health", get(health))
-        .nest("/admin/routes", admin_router)
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .fallback(any(proxy::proxy_handler))
-        .with_state(app_state);
+    let app = app_router(app_state);
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "3000".into());
     let addr = format!("0.0.0.0:{port}");
@@ -102,6 +109,25 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+pub fn app_router(app_state: state::AppState) -> Router {
+    let admin_router = Router::new()
+        .route("/", post(admin::create_route))
+        .route("/", get(admin::list_routes))
+        .route("/{*key}", get(admin::get_route))
+        .route("/{*key}", delete(admin::delete_route))
+        .layer(middleware::from_fn_with_state(
+            app_state.clone(),
+            auth_middleware,
+        ));
+
+    Router::new()
+        .route("/health", get(health))
+        .nest("/admin/routes", admin_router)
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .fallback(any(proxy::proxy_handler))
+        .with_state(app_state)
+}
+
 async fn auth_middleware(
     axum::extract::State(app_state): axum::extract::State<state::AppState>,
     headers: axum::http::HeaderMap,
@@ -109,10 +135,17 @@ async fn auth_middleware(
     next: middleware::Next,
 ) -> axum::response::Response {
     use axum::http::StatusCode;
+    use subtle::ConstantTimeEq;
+
     let ok = headers
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
-        .map(|t| t == app_state.admin_token)
+        .map(|t| {
+            t.as_bytes()
+                .ct_eq(app_state.admin_token.as_bytes())
+                .unwrap_u8()
+                == 1
+        })
         .unwrap_or(false);
     if !ok {
         return (

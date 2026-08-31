@@ -47,22 +47,48 @@ pub async fn create_route(
         )
             .into_response();
     }
-    if !payload.value.starts_with("http://") && !payload.value.starts_with("https://") {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ApiResponse {
-                success: false,
-                message: "value must start with http:// or https://".into(),
-            }),
-        )
-            .into_response();
-    }
+    let parsed_url = match url::Url::parse(&payload.value) {
+        Ok(u) => {
+            if u.scheme() != "http" && u.scheme() != "https" {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiResponse {
+                        success: false,
+                        message: "value must be an http or https URL".into(),
+                    }),
+                )
+                    .into_response();
+            }
+            if u.host().is_none() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiResponse {
+                        success: false,
+                        message: "value must contain a valid host".into(),
+                    }),
+                )
+                    .into_response();
+            }
+            u.to_string()
+        }
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse {
+                    success: false,
+                    message: "value must be a valid URL".into(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
     let mut conn = state.redis.clone();
-    if let Err(e) = conn.set::<_, _, ()>(route_key(key), payload.value).await {
+    if let Err(e) = conn.set::<_, _, ()>(route_key(key), parsed_url).await {
         tracing::error!("failed to write route to redis: {e}");
-        crate::state::notify_slack(
-            state.client.clone(),
-            state.slack_webhook_url.clone(),
+        crate::state::notify_slack_debounced(
+            &state,
+            &key,
             "Redis Write Error (Admin Route Create)".into(),
             format!("*Route Key:* `{}`\n*Error Details:* ```{}```", key, e),
         );
@@ -103,7 +129,7 @@ pub async fn get_route(
 ) -> impl IntoResponse {
     let clean_key = key.trim().trim_matches('/');
     match get_target(&state, clean_key).await {
-        Some(value) => (
+        Ok(Some(value)) => (
             StatusCode::OK,
             Json(ApiItemResponse {
                 data: Some(RouteEntry {
@@ -115,7 +141,7 @@ pub async fn get_route(
             }),
         )
             .into_response(),
-        None => (
+        Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(ApiItemResponse {
                 data: None,
@@ -124,6 +150,18 @@ pub async fn get_route(
             }),
         )
             .into_response(),
+        Err(e) => {
+            tracing::error!("Redis error looking up route '{}': {}", clean_key, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiItemResponse {
+                    data: None,
+                    message: "failed to fetch route".into(),
+                    status: 500,
+                }),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -138,16 +176,29 @@ pub async fn get_route(
     security(("api_key" = []))
 )]
 pub async fn list_routes(State(state): State<AppState>) -> impl IntoResponse {
-    let routes = state_list_routes(&state).await;
-    (
-        StatusCode::OK,
-        Json(ApiListResponse {
-            data: routes,
-            message: "Successfully data fetched".into(),
-            status: 200,
-        }),
-    )
-        .into_response()
+    match state_list_routes(&state).await {
+        Ok(routes) => (
+            StatusCode::OK,
+            Json(ApiListResponse {
+                data: routes,
+                message: "Successfully data fetched".into(),
+                status: 200,
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("failed to list routes: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiListResponse {
+                    data: vec![],
+                    message: "failed to fetch routes".into(),
+                    status: 500,
+                }),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// Delete a route mapping
@@ -167,17 +218,44 @@ pub async fn delete_route(
 ) -> impl IntoResponse {
     let clean_key = key.trim().trim_matches('/');
     let mut conn = state.redis.clone();
-    let deleted: i64 = conn.del(route_key(clean_key)).await.unwrap_or(0);
-    (
-        StatusCode::OK,
-        Json(ApiResponse {
-            success: deleted > 0,
-            message: if deleted > 0 {
-                format!("route '{clean_key}' deleted")
+    match conn.del::<_, i64>(route_key(clean_key)).await {
+        Ok(deleted) => {
+            if deleted > 0 {
+                (
+                    StatusCode::OK,
+                    Json(ApiResponse {
+                        success: true,
+                        message: format!("route '{clean_key}' deleted"),
+                    }),
+                )
+                    .into_response()
             } else {
-                format!("route '{clean_key}' not found")
-            },
-        }),
-    )
-        .into_response()
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(ApiResponse {
+                        success: false,
+                        message: format!("route '{clean_key}' not found"),
+                    }),
+                )
+                    .into_response()
+            }
+        }
+        Err(e) => {
+            tracing::error!("failed to delete route: {e}");
+            crate::state::notify_slack_debounced(
+                &state,
+                clean_key,
+                "Redis Delete Error (Admin Route)".into(),
+                format!("*Route Key:* `{}`\n*Error Details:* ```{}```", clean_key, e),
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    message: "failed to delete route".into(),
+                }),
+            )
+                .into_response()
+        }
+    }
 }
