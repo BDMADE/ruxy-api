@@ -261,6 +261,70 @@ cargo test
 
 ---
 
+## ⚡ High-Throughput & Scalability Architecture
+
+Ruxy is engineered from the ground up for extreme concurrency and low-latency throughput. Understanding how it handles massive request volumes and how to scale it horizontally across distributed clusters ensures seamless production operations under heavy load (e.g. 50k–500k+ requests/sec).
+
+```
+                            [ Cloudflare / AWS CloudFront / Edge CDN ]
+                                                │
+                                  [ Anycast / Layer 4 Load Balancer ]
+                                          (AWS NLB / HAProxy)
+                                                │
+                    ┌───────────────────────────┼───────────────────────────┐
+                    ▼                           ▼                           ▼
+        [ Ruxy Replica #1 ]           [ Ruxy Replica #2 ]           [ Ruxy Replica #N ]
+        (Tokio Event Loop)            (Tokio Event Loop)            (Tokio Event Loop)
+        (In-Memory L1 Cache)          (In-Memory L1 Cache)          (In-Memory L1 Cache)
+                    │                           │                           │
+                    └───────────────────────────┼───────────────────────────┘
+                                                │
+                                   [ Redis / Dragonfly Cluster ]
+                                     (Route Store & Rate Limits)
+                                                │
+                                 [ Upstream Origin Backends ]
+```
+
+### 1. Core Mechanics Under High Load
+
+- **Asynchronous Non-Blocking I/O (Tokio Runtime)**: Each incoming request is scheduled onto lightweight Tokio green threads (tasks) across available CPU cores without spawning heavy OS threads.
+- **Connection Pooling & HTTP Keep-Alive**: Upstream backend connections are managed by connection pools in `reqwest`, reusing existing TCP sockets and eliminating TLS/TCP handshake latency per request.
+- **Multiplexed Redis Client**: Built with Redis `ConnectionManager` to enable pipelined and multiplexed asynchronous queries across threads without connection contention.
+- **Zero-Cost Abstraction & Predictable Memory**: Minimal memory allocations per request ensure consistent sub-millisecond p99 latency without garbage collection pauses.
+
+---
+
+### 2. Horizontal Scaling & High Availability (HA)
+
+Because Ruxy is **100% stateless** (all route data and shared states reside in Redis), scaling capacity is straightforward:
+
+1. **Multi-Replica Deployment**: Run multiple container instances behind a Layer 4 (e.g., AWS NLB, HAProxy) or Layer 7 (e.g., Traefik, Envoy, NGINX) load balancer.
+2. **Kubernetes Auto-Scaling**: Deploy with a `HorizontalPodAutoscaler` (HPA) targeting CPU utilization (e.g., 60–70%) or incoming HTTP connection count.
+3. **Redis Clustering / Dragonfly**: For millions of route lookups and global rate limiting, pair with a sharded Redis Cluster, Redis Sentinel, or [Dragonfly](https://www.dragonflydb.io/) (multi-threaded in-memory store capable of millions of QPS).
+
+---
+
+### 3. Production OS & Kernel Tuning
+
+For hosts or worker nodes handling 100k+ concurrent connections, tune the host TCP stack (`/etc/sysctl.conf`):
+
+```ini
+# Increase maximum open file descriptors
+fs.file-max = 2097152
+
+# Expand ephemeral port range for upstream proxying
+net.ipv4.ip_local_port_range = 1024 65535
+
+# Increase TCP connection backlog
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+
+# Enable fast recycling and reuse of TIME_WAIT sockets
+net.ipv4.tcp_tw_reuse = 1
+```
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
