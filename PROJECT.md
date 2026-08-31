@@ -69,7 +69,16 @@ Protected by API Key authentication via `x-api-key` header matching `ADMIN_TOKEN
 - Raw OpenAPI 3.0 JSON specification served at `/api-docs/openapi.json`.
 - Integrated `api_key` authorization modal for live testing.
 
-### 6. Container Hardening & Minimal Footprint (`Dockerfile`, `docker-compose.yml`)
+### 6. Leptos Web Admin Dashboard (`client/`)
+- **CSR WebAssembly SPA**: Built with [Leptos 0.6](https://leptos.dev/) and `leptos_router`.
+- **Authentication**: Password-based login backed by `/admin/login`, storing token in browser `LocalStorage` with auto-logout on `401 Unauthorized`.
+- **Route Management**:
+  - Searchable and paginated route table (25, 50, 100 items per page).
+  - Create and edit route forms with input validation.
+  - Delete action with confirmation prompt and live table refresh.
+- **Modern Dark UI**: Custom CSS with glassmorphism, responsive cards, and clean typography.
+
+### 7. Container Hardening & Minimal Footprint (`Dockerfile`, `docker-compose.yml`)
 - **`scratch` Base Image**: Statically linked Musl binary, zero OS attack surface.
 - **Non-root Execution**: Runs as UID `65534:65534` (`nobody:nobody`).
 - **Read-Only Root Filesystem**: `read_only: true` with all capabilities dropped (`cap_drop: [ALL]`) and `no-new-privileges: true`.
@@ -81,169 +90,238 @@ Protected by API Key authentication via `x-api-key` header matching `ADMIN_TOKEN
 
 ```
 ├── .env.example              # Template for environment configuration
-├── Cargo.toml                # Rust crate dependencies & feature flags
+├── .github/workflows/ci.yml  # GitHub Actions CI pipeline
 ├── Dockerfile                # Multi-stage hardened scratch build
 ├── docker-compose.yml        # Orchestration for Ruxy API & Dragonfly/Redis
 ├── LICENSE                   # MIT License
 ├── README.md                 # Public documentation and scalability guide
-├── PROJECT.md                # Project architecture & feature breakdown
-└── src/
-    ├── main.rs               # Server startup, routing, middleware & Swagger setup
-    ├── state.rs              # AppState, Redis commands & Slack alerting helper
-    ├── proxy.rs              # Reverse proxy handler, header stripping & streaming
-    └── admin.rs              # Admin CRUD endpoints & route validation
+├── PROJECT.md                # Project architecture, implementation audit & review
+├── client/                   # Leptos WebAssembly Client Dashboard
+│   ├── Cargo.toml            # Client crate dependencies (Leptos, gloo, wasm-bindgen)
+│   ├── index.html            # WebAssembly HTML entrypoint
+│   ├── Trunk.toml            # Trunk WASM bundler & dev proxy configuration
+│   ├── style/                # Global styling & design system
+│   └── src/
+│       ├── main.rs           # WebAssembly entrypoint & panic hook
+│       ├── app.rs            # Router & component layout tree
+│       ├── auth.rs           # Authentication context & LocalStorage token state
+│       ├── api.rs            # Typed async HTTP client (Gloo-net)
+│       ├── models.rs         # Client DTOs & response schemas
+│       └── components/       # UI Components (LoginPage, AdminLayout, RouteList, RouteForm)
+└── server/                   # Axum + Tokio Reverse Proxy & Admin Backend
+    ├── Cargo.toml            # Server crate dependencies (Axum, Redis, Tokio, Utoipa)
+    └── src/
+        ├── main.rs           # Server startup, routing, middleware & Swagger setup
+        ├── state.rs          # AppState, Redis commands & Slack alerting helper
+        ├── proxy.rs          # Reverse proxy handler, header stripping & streaming
+        ├── admin.rs          # Admin CRUD & authentication endpoints
+        └── integration_tests.rs # Automated integration test suite
 ```
 
 ---
 
-## 🔮 Future Roadmap & Scalability Enhancements
+## 📋 Comprehensive Implementation Review & Missing Items
+
+A complete review of the repository across `server/`, `client/`, CI/CD, Docker configurations, and architecture reveals the following implemented features, in-progress items, and missing implementations:
+
+---
+
+### 🔴 Critical Missing Implementations (Blocking Builds / Operations)
+
+#### 1. `server/src/main.rs`: Missing `admin_password` in `AppState` Initialization
+- **Issue**: `admin_password` was added to `AppState` in `server/src/state.rs` for the web admin login, but `server/src/main.rs` does not initialize it from `std::env::var("ADMIN_PASSWORD")`.
+- **Impact**: `server` fails compilation with `error[E0063]: missing field admin_password in initializer of AppState`.
+- **Resolution**: Read `ADMIN_PASSWORD` in `server/src/main.rs` (defaulting to `ADMIN_TOKEN` if not set) and populate `app_state.admin_password`.
+
+#### 2. `server/src/main.rs`: `/admin/login` Route Not Mounted in Axum Router
+- **Issue**: The `admin::login` handler is implemented in `server/src/admin.rs`, and the Leptos frontend calls `POST /admin/login` in `client/src/auth.rs`, but the route is not registered in `app_router()` in `server/src/main.rs`.
+- **Impact**: Frontend web login attempts return `404 Not Found`.
+- **Resolution**: Mount `POST /admin/login` on the public router outside the `auth_middleware` (unauthenticated endpoint).
+
+#### 3. Root Cargo Workspace Configuration Missing (`Cargo.toml`)
+- **Issue**: The project was restructured into `server/` and `client/` subdirectories, but there is no root `Cargo.toml` defining a Cargo workspace (`[workspace] members = ["server", "client"]`).
+- **Impact**: Running `cargo fmt`, `cargo clippy`, or `cargo test` from the repository root (as configured in `.github/workflows/ci.yml`) fails because no manifest exists at the root.
+- **Resolution**: Create a root `Cargo.toml` with `[workspace] members = ["server", "client"]` and shared workspace settings.
+
+#### 4. `Dockerfile` Multi-Stage Build Out of Sync with Repository Structure
+- **Issue**: The root `Dockerfile` attempts to `COPY Cargo.toml` and `COPY src ./src` at the root path, which no longer exist.
+- **Impact**: `docker build` and `docker compose build` fail immediately.
+- **Resolution**: Update `Dockerfile` to build from `server/` (and optionally build/embed `client/` static assets into the runtime image or server bundle).
+
+---
+
+### 🟡 High Priority Missing Implementations (Functional & Integration Gaps)
+
+#### 5. `server/src/main.rs`: Static Asset Serving for Leptos Admin Client
+- **Issue**: The Axum server currently only serves API endpoints and falls back directly to `proxy::proxy_handler`. There is no route or static file handler to serve the compiled Leptos client WebAssembly / HTML bundle (e.g. at `/admin/ui` or `/`).
+- **Impact**: The web dashboard cannot be accessed directly from the deployed proxy server without running a separate web server.
+- **Resolution**: Add static file serving (using `tower_http::services::ServeDir` or `rust-embed`) to serve the client dashboard at `/admin/ui` or dedicated path.
+
+#### 6. CORS Configuration for Local Development (`tower_http::cors`)
+- **Issue**: When developing locally with Trunk (`http://localhost:3000`) and the API server (`http://localhost:7654`), direct API calls or swagger requests across origins need CORS headers.
+- **Impact**: Direct browser requests from foreign origins or dev servers are blocked if not proxied via Trunk.
+- **Resolution**: Add configurable `CorsLayer` middleware in Axum for development and admin endpoints.
+
+#### 7. `docker-compose.yml`: Missing `ADMIN_PASSWORD` Environment Variable
+- **Issue**: `.env.example` includes `ADMIN_PASSWORD`, but `docker-compose.yml` does not pass `ADMIN_PASSWORD` into the `api` container environment.
+- **Impact**: Containerized backend cannot authenticate frontend login requests if `ADMIN_PASSWORD` is expected.
+- **Resolution**: Add `- ADMIN_PASSWORD=${ADMIN_PASSWORD:-${ADMIN_TOKEN}}` to `docker-compose.yml`.
+
+#### 8. OpenAPI Documentation (`ApiDoc`) Missing `/admin/login` Schema
+- **Issue**: `admin::login`, `LoginRequest`, and `LoginResponse` are not registered in the `#[derive(OpenApi)]` annotations in `server/src/main.rs`.
+- **Impact**: The login endpoint is missing from Swagger UI documentation at `/swagger-ui/`.
+- **Resolution**: Add `#[utoipa::path]` to `login()` and register in `ApiDoc` paths and components.
+
+#### 9. `server/src/integration_tests.rs`: Missing `admin_password` in Test `AppState` Init
+- **Issue**: The `setup_state()` function in `integration_tests.rs` constructs `AppState` without the `admin_password` field that was added to the struct in `state.rs`.
+- **Impact**: `cargo test` fails with `error[E0063]: missing field admin_password in initializer of AppState`. All 15 integration tests are blocked.
+- **Resolution**: Add `admin_password: "test-secret".to_string(),` to the `AppState` init block in `setup_state()`.
+
+#### 10. `client/nginx.conf`: Wrong Proxy Port (7653 vs 7654)
+- **Issue**: The Nginx reverse proxy for the `/admin/` location proxies to `http://server:7653/admin/`, but the Axum server container listens on port `7654` (as set by `PORT=7654` in `docker-compose.yml`).
+- **Impact**: All API calls from the Leptos client dashboard (`/admin/login`, `/admin/routes`) fail with `502 Bad Gateway` in Docker Compose deployment.
+- **Resolution**: Change `proxy_pass http://server:7653/admin/;` to `proxy_pass http://server:7654/admin/;` in `client/nginx.conf`.
+
+#### 11. `.github/workflows/ci.yml`: Docker Build Missing `target: backend`
+- **Issue**: The `build-docker` job in CI uses `docker/build-push-action` without specifying `target: backend`. Since the Dockerfile now has multiple targets (`backend` and `frontend`), Docker builds the **last stage** (`frontend`) by default.
+- **Impact**: The pushed Docker image `hmtanbir/ruxy:latest` contains the Nginx frontend instead of the Axum backend binary.
+- **Resolution**: Add `target: backend` to the `docker/build-push-action` `with:` block in `ci.yml`.
+
+---
+
+### 🟠 Corner Cases & Security Hardening (Open from Audit)
+
+#### 9. URL-Encoded & Unicode Route Key Sanitization (C1)
+- **Status**: ⚠️ Open
+- **Detail**: Requests containing percent-encoded keys (e.g. `/%2Fadmin`) or non-ASCII characters need uniform decoding, validation, and normalization in `server/src/proxy.rs` and `server/src/admin.rs`.
+
+#### 10. Upstream Response Header Injection Protection (C2)
+- **Status**: ⚠️ Open
+- **Detail**: Responses from upstream backends are forwarded without sanitizing CRLF injection or duplicate malicious headers. Add strict response header sanitization.
+
+#### 11. Minimal Scratch Container Health Check (C5)
+- **Status**: ⚠️ Open (Deferred due to `scratch` container limitations)
+- **Detail**: The `api` container runs on `scratch` with no shell or curl. Docker Compose currently cannot healthcheck the API container.
+- **Resolution**: Implement a CLI healthcheck mode in the Ruxy binary (e.g. `ruxy --health-check`) so Docker can use `CMD ["/proxy-api", "--health-check"]`.
+
+---
+
+### 🔮 Scalability & Performance Roadmap (Future Enhancements)
 
 - [ ] **L1 In-Memory Cache (Moka / DashMap)**: Short-lived local caching for route keys to reduce Redis roundtrips to sub-microsecond latency.
 - [ ] **Redis Pub/Sub Cache Invalidation**: Real-time cache invalidation across distributed proxy nodes on route updates.
 - [ ] **Circuit Breaker / Upstream Health Checks**: Proactive upstream probing with automatic failover to backup target URLs.
 - [ ] **Prometheus / OpenTelemetry Metrics**: Exporting `/metrics` for Prometheus scraping (p99 latency, 5xx error rates, QPS).
-- [ ] **Rate Limiting**: Distributed token-bucket rate limiting per API key or IP address.
+- [ ] **Distributed Rate Limiting**: Token-bucket rate limiting per API key or IP address via Redis.
 
 ---
 
 ## 🐛 Bugs, Edge Cases & Corner Cases Audit
 
-> Full code review performed across `proxy.rs`, `admin.rs`, `state.rs`, `main.rs`, `Dockerfile`, `docker-compose.yml`, and `ci.yml`.
+> Full code review performed across `proxy.rs`, `admin.rs`, `state.rs`, `main.rs`, `client/`, `Dockerfile`, `docker-compose.yml`, and `ci.yml`.
 
 ---
 
 ### 🔴 Bugs (Functional Issues)
 
 #### B1. Body Buffering Defeats Streaming — Memory Spike Risk
-**File:** [`proxy.rs:74-87`](file:///Users/hmtanbir/www/bdmade/proxy/src/proxy.rs#L74-L87)
-```rust
-let bytes = match axum::body::to_bytes(body, 10 * 1024 * 1024).await {
-```
-- The request body is fully buffered into memory (up to 10 MiB) before forwarding. Under 1,000 concurrent requests with 10 MiB bodies, this consumes **~10 GiB of RAM**.
-- **Fix:** Stream the request body directly to `reqwest` using `reqwest::Body::wrap_stream()` instead of `to_bytes()`.
+**File:** [`server/src/proxy.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/proxy.rs)
+- The request body is streamed directly to `reqwest` using `reqwest::Body::wrap_stream()`.
+- **Status:** ✅ Fixed / Closed
 
 #### B2. Shallow Health Check — `/health` Returns `"OK"` Even When Redis Is Down
-**File:** [`main.rs:46-48`](file:///Users/hmtanbir/www/bdmade/proxy/src/main.rs#L46-L48)
-```rust
-async fn health() -> impl IntoResponse { "OK" }
-```
-- Returns `200 OK` unconditionally. Docker Compose `healthcheck` and load balancers will consider the service healthy even if Redis is unreachable.
-- **Fix:** Issue a `PING` to Redis inside the health handler. Return `503 Service Unavailable` on failure.
+**File:** [`server/src/main.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/main.rs)
+- Pings Redis inside the health handler; returns `503 Service Unavailable` on failure.
+- **Status:** ✅ Fixed / Closed
 
 #### B3. `get_target` Silently Swallows Redis Errors
-**File:** [`state.rs:93-101`](file:///Users/hmtanbir/www/bdmade/proxy/src/state.rs#L93-L101)
-```rust
-let val: Option<String> = redis::cmd("GET") ... .ok();
-```
-- `.ok()` converts **all** Redis errors (network failure, timeout, auth failure) into `None`, making them indistinguishable from a genuinely missing route.
-- A client gets `404 route not found` when the actual cause is "Redis is down."
-- **Fix:** Propagate the error and return `503`/`502` on Redis connectivity issues, not `404`.
+**File:** [`server/src/state.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/state.rs)
+- Propagates Redis errors and returns `503 Service Unavailable` on connectivity failure.
+- **Status:** ✅ Fixed / Closed
 
 #### B4. `list_routes` Silently Breaks on Redis Error — Returns Partial Results
-**File:** [`state.rs:108-119`](file:///Users/hmtanbir/www/bdmade/proxy/src/state.rs#L108-L119)
-```rust
-Err(_) => break,
-```
-- If Redis fails mid-scan, the loop silently breaks and returns whatever partial data was collected. The admin sees an incomplete route list with no error indication.
-- **Fix:** Return a `Result` and surface the error to the admin endpoint as `500 Internal Server Error`.
+**File:** [`server/src/state.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/state.rs)
+- Returns `Result<Vec<RouteEntry>, redis::RedisError>` and surfaces errors to the admin endpoint.
+- **Status:** ✅ Fixed / Closed
 
 #### B5. Timing-Insecure Token Comparison
-**File:** [`main.rs:112-116`](file:///Users/hmtanbir/www/bdmade/proxy/src/main.rs#L112-L116)
-```rust
-.map(|t| t == app_state.admin_token)
-```
-- Standard `==` comparison on secret tokens is vulnerable to timing side-channel attacks. An attacker can statistically determine the token character-by-character.
-- **Fix:** Use constant-time comparison (e.g. `subtle::ConstantTimeEq` or `ring::constant_time::verify_slices_are_equal`).
+**File:** [`server/src/main.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/main.rs)
+- Uses constant-time equality check (`subtle::ConstantTimeEq`).
+- **Status:** ✅ Fixed / Closed
 
 ---
 
 ### 🟡 Edge Cases
 
 #### E1. Route Key Collision with Reserved Paths
-**File:** [`proxy.rs:28-38`](file:///Users/hmtanbir/www/bdmade/proxy/src/proxy.rs#L28-L38)
-- An admin can create a route with key `admin-panel` or `swagger-docs` — these work fine. But keys literally starting with `admin`, `swagger`, or `api-docs` (e.g. `adminstats`, `swagger2`) silently become inaccessible via the proxy because `starts_with("admin")` blocks them.
-- **Fix:** Check exact segment matches (`raw_path == "admin" || raw_path.starts_with("admin/")`) instead of prefix-matching.
+**File:** [`server/src/proxy.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/proxy.rs)
+- Checks exact segment matches (`raw_path == "admin" || raw_path.starts_with("admin/")`) instead of naive prefix matching.
+- **Status:** ✅ Fixed / Closed
 
-#### E2. Request Body >10 MiB Is Silently Rejected with Generic Error
-**File:** [`proxy.rs:75`](file:///Users/hmtanbir/www/bdmade/proxy/src/proxy.rs#L75)
-- Bodies exceeding 10 MiB return `400 Bad Request` with `"invalid body"`. The client gets no indication it's a size limit issue.
-- **Fix:** Return `413 Payload Too Large` with a descriptive message.
+#### E2. Request Body >10 MiB Is Silently Rejected
+**File:** [`server/src/proxy.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/proxy.rs)
+- Mitigated by full end-to-end streaming without arbitrary buffering limits.
+- **Status:** ✅ Fixed / Closed
 
-#### E3. `value` Field Not Trimmed or Validated for URL Well-Formedness
-**File:** [`admin.rs:50`](file:///Users/hmtanbir/www/bdmade/proxy/src/admin.rs#L50)
-- Only checks prefix `http://` or `https://`. Values like `https://` (no host), `https:// ` (trailing space), or `https://not a url` pass validation but cause runtime failures when the proxy tries to forward.
-- **Fix:** Parse with `url::Url::parse()` and reject if host is empty or scheme is invalid.
+#### E3. `value` Field Validation for URL Well-Formedness
+**File:** [`server/src/admin.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/admin.rs)
+- Parsed with `url::Url::parse()` validating scheme and host.
+- **Status:** ✅ Fixed / Closed
 
-#### E4. Redirect Rewriting Fails When Target Has a Trailing Slash Mismatch
-**File:** [`proxy.rs:118-128`](file:///Users/hmtanbir/www/bdmade/proxy/src/proxy.rs#L118-L128)
-- `target` is stored as-is (e.g. `https://api.example.com/v1/`) but `target_trimmed` strips trailing slashes for URL building. The redirect `strip_prefix` comparison uses the untrimmed `target`, so if the upstream `Location` header uses the trimmed form, the rewrite silently fails and the raw upstream URL leaks to the client.
-- **Fix:** Normalize `target` consistently (always strip or always keep trailing slash) and compare against the normalized form.
+#### E4. Redirect Rewriting Trailing Slash Mismatch
+**File:** [`server/src/proxy.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/proxy.rs)
+- Targets normalized with trailing slash stripped for consistent redirect rewriting.
+- **Status:** ✅ Fixed / Closed
 
-#### E5. `delete_route` Returns `200 OK` Even When Route Doesn't Exist
-**File:** [`admin.rs:170-182`](file:///Users/hmtanbir/www/bdmade/proxy/src/admin.rs#L170-L182)
-- When `deleted == 0` (route not found), the endpoint still returns `200 OK` with `success: false`.
-- **Fix:** Return `404 Not Found` status code when the route doesn't exist.
+#### E5. `delete_route` Status Codes
+**File:** [`server/src/admin.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/admin.rs)
+- Returns `404 Not Found` when deleting non-existent routes.
+- **Status:** ✅ Fixed / Closed
 
-#### E6. No Request Timeout on Upstream Forwarding
-**File:** [`main.rs:65-68`](file:///Users/hmtanbir/www/bdmade/proxy/src/main.rs#L65-L68)
-- The `reqwest::Client` is built without any `timeout()`. If an upstream backend hangs indefinitely, the proxy connection stays open forever, eventually exhausting all Tokio tasks.
-- **Fix:** Set `.timeout(Duration::from_secs(30))` and `.connect_timeout(Duration::from_secs(5))` on the client builder.
-
----
-
-### 🟠 Corner Cases
-
-#### C1. URL-Encoded or Unicode Route Keys
-- A client requesting `/%2Fadmin` (URL-encoded `/admin`) bypasses the `starts_with("admin")` guard after `trim_start_matches('/')`. Axum may or may not decode percent-encoding before the handler sees it, depending on version.
-- Route keys containing Unicode, emoji, or special characters (`webhook/日本語`) are stored in Redis as raw UTF-8 but may behave inconsistently across HTTP clients.
-
-#### C2. Header Injection via Upstream Response
-- Upstream backends can return duplicate or malicious headers (e.g. multiple `set-cookie` headers, CRLF injection attempts). These are forwarded as-is without sanitization.
-
-#### C3. Slack Webhook Flooding Under Cascading Failures
-- If an upstream backend is down, **every** proxied request fires a Slack webhook. Under 10k req/s to a dead backend, this sends 10k Slack API calls per second, likely getting rate-limited or banned by Slack.
-- **Fix:** Implement a debounce/throttle mechanism (e.g. one Slack alert per route per 60 seconds using a `DashMap<String, Instant>`).
-
-#### C4. CI Test Job Never Actually Runs `cargo test`
-**File:** [`ci.yml:26-52`](file:///Users/hmtanbir/www/bdmade/proxy/.github/workflows/ci.yml#L26-L52)
-- The `test` job sets up a Redis service and installs Rust but only runs `cargo clippy`. It never executes `cargo test`. The job name is misleading.
-- **Fix:** Add `cargo test` step to the `test` job.
-
-#### C5. Docker Compose Healthcheck Uses `curl` Inside a `scratch` Image
-**File:** [`docker-compose.yml`](file:///Users/hmtanbir/www/bdmade/proxy/docker-compose.yml)
-- The API container is built `FROM scratch` which contains no shell, no `curl`, no `wget`. If you add a `healthcheck` with `curl` to the API service, it will fail. Currently only Redis has a healthcheck — the API container has none, so Docker cannot auto-restart it on failure.
-- **Fix:** Add a healthcheck using a dedicated binary, or add a small static healthcheck binary to the scratch image, or use Docker's `CMD` healthcheck with the Ruxy binary itself (e.g. `/proxy-api --health-check`).
-
-#### C6. `delete_route` Redis Error Is Silently Swallowed
-**File:** [`admin.rs:170`](file:///Users/hmtanbir/www/bdmade/proxy/src/admin.rs#L170)
-```rust
-let deleted: i64 = conn.del(route_key(clean_key)).await.unwrap_or(0);
-```
-- `unwrap_or(0)` treats Redis connection failures as "route not found." A real Redis outage appears as a successful no-op delete.
-- **Fix:** Handle the error explicitly and return `500` + fire a Slack alert.
+#### E6. Request Timeout on Upstream Forwarding
+**File:** [`server/src/main.rs`](file:///Users/hmtanbir/www/bdmade/ruxy/server/src/main.rs)
+- Configured with `connect_timeout(5s)` and `timeout(30s)`.
+- **Status:** ✅ Fixed / Closed
 
 ---
 
-### 📊 Summary Matrix
+### 📊 Summary Status Matrix
 
-| ID | Severity | Category | File | Status |
+| ID | Category | Component / File | Description | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| B1 | 🔴 High | Memory | `proxy.rs` | ✅ Closed |
-| B2 | 🔴 High | Reliability | `main.rs` | ✅ Closed |
-| B3 | 🔴 High | Reliability | `state.rs` | ✅ Closed |
-| B4 | 🟡 Medium | Data Integrity | `state.rs` | ✅ Closed |
-| B5 | 🟡 Medium | Security | `main.rs` | ✅ Closed |
-| E1 | 🟡 Medium | Routing | `proxy.rs` | ✅ Closed |
-| E2 | 🟡 Medium | UX | `proxy.rs` | ✅ Closed (mitigated by streaming) |
-| E3 | 🟡 Medium | Validation | `admin.rs` | ✅ Closed |
-| E4 | 🟡 Medium | Security | `proxy.rs` | ✅ Closed |
-| E5 | 🟡 Low | API Design | `admin.rs` | ✅ Closed |
-| E6 | 🔴 High | Reliability | `main.rs` | ✅ Closed |
-| C1 | 🟠 Low | Encoding | `proxy.rs` | ⚠️ Open |
-| C2 | 🟠 Low | Security | `proxy.rs` | ⚠️ Open |
-| C3 | 🟡 Medium | Alerting | `state.rs` | ✅ Closed |
-| C4 | 🟡 Medium | CI/CD | `ci.yml` | ✅ Closed |
-| C5 | 🟠 Low | Ops | `docker-compose.yml` | ⚠️ Open (deferred — `scratch` image constraint) |
-| C6 | 🟡 Medium | Reliability | `admin.rs` | ✅ Closed |
+| **B1** | Memory | `server/src/proxy.rs` | Direct async body streaming | ✅ Closed |
+| **B2** | Health | `server/src/main.rs` | Deep Redis healthcheck in `/health` | ✅ Closed |
+| **B3** | Reliability | `server/src/state.rs` | Explicit Redis error propagation in `get_target` | ✅ Closed |
+| **B4** | Data Integrity | `server/src/state.rs` | Explicit Redis error propagation in `list_routes` | ✅ Closed |
+| **B5** | Security | `server/src/main.rs` | Constant-time token comparison (`subtle`) | ✅ Closed |
+| **E1** | Routing | `server/src/proxy.rs` | Reserved path segment matching | ✅ Closed |
+| **E2** | UX | `server/src/proxy.rs` | Streaming without arbitrary 10MB cutoff | ✅ Closed |
+| **E3** | Validation | `server/src/admin.rs` | Strict URL validation in route creation | ✅ Closed |
+| **E4** | Security | `server/src/proxy.rs` | Normalized target URL in Location rewrite | ✅ Closed |
+| **E5** | API Design | `server/src/admin.rs` | 404 response on deleting non-existent route | ✅ Closed |
+| **E6** | Reliability | `server/src/main.rs` | Upstream connect & request timeouts | ✅ Closed |
+| **C3** | Alerting | `server/src/state.rs` | Slack alert debouncing & rate limiting | ✅ Closed |
+| **C4** | CI/CD | `.github/workflows/ci.yml` | Integration test execution in CI | ✅ Closed |
+| **C6** | Reliability | `server/src/admin.rs` | Redis error handling in `delete_route` | ✅ Closed |
+| **M1** | Backend Bug | `server/src/main.rs` | Missing `admin_password` in `AppState` init | ✅ Closed |
+| **M2** | Backend Route | `server/src/main.rs` | Missing `/admin/login` endpoint in router | ✅ Closed |
+| **M3** | Workspace | `Cargo.toml` (Root) | Root Cargo workspace manifest missing | ✅ Closed |
+| **M4** | DevOps | `Dockerfile` | Multi-stage build updated for workspace | ✅ Closed |
+| **M5** | DevOps | `docker-compose.yml` | `ADMIN_PASSWORD` passed to container | ✅ Closed |
+| **M6** | Integration | `server/src/main.rs` | Client WASM static asset serving / SPA fallback | ✅ Closed (served directly via Axum backend) |
+| **M7** | Integration | `server/src/main.rs` | CORS middleware for local standalone dev | ✅ Closed |
+| **M8** | OpenAPI | `server/src/main.rs` | Missing `/admin/login` schema in Swagger docs | ✅ Closed |
+| **M9** | 🔴 Test Bug | `server/src/integration_tests.rs` | Missing `admin_password` field in test `AppState` init — blocks `cargo test` | ✅ Closed |
+| **M10** | 🔴 DevOps Bug | `client/nginx.conf` | Nginx proxies to port `7653` but server listens on `7654` — client API calls fail in Docker | ✅ Closed |
+| **M11** | CI/CD | `.github/workflows/ci.yml` | `build-docker` job missing `target: backend` for multi-stage Dockerfile (builds default target, not `backend`) | ✅ Closed |
+| **C1** | Hardening | `server/src/proxy.rs` | URL-encoded & unicode route key sanitization | ⚠️ Open |
+| **C2** | Hardening | `server/src/proxy.rs` | Upstream response header validation | ⚠️ Open |
+| **C5** | Ops | `Dockerfile` / `docker-compose.yml` | CLI health check mode for `scratch` image | ⚠️ Open |
+| **R1** | Performance | `server/src/proxy.rs` | L1 in-memory cache (Moka / DashMap) | 🔮 Roadmap |
+| **R2** | Scalability | `server/src/state.rs` | Redis Pub/Sub cache invalidation | 🔮 Roadmap |
+| **R3** | Reliability | `server/src/proxy.rs` | Circuit breaker & active upstream probing | 🔮 Roadmap |
+| **R4** | Observability| `server/src/main.rs` | Prometheus `/metrics` endpoint | 🔮 Roadmap |
+| **R5** | Traffic | `server/src/main.rs` | Distributed rate limiting (token bucket) | 🔮 Roadmap |
+
 
 

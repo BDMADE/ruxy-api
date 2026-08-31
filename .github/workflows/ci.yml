@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -38,7 +38,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -56,13 +56,13 @@ jobs:
 
   build-docker:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main')
     env:
-      IMAGE_NAME: ruxy-api
-      IMAGE_TAG: 1.0.0
+      IMAGE_NAME: ruxy
+      IMAGE_TAG: 2.0.0
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -80,6 +80,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: backend
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |

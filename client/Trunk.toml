@@ -1,0 +1,11 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/admin/ui/"
+
+[serve]
+port = 3000
+
+[[proxy]]
+backend = "http://localhost:7654/admin"
+rewrite = "/admin"

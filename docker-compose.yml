@@ -2,6 +2,8 @@ services:
   redis:
     image: hmtanbir/dragonfly:latest
     container_name: ruxy-redis
+    ports:
+      - "6379:6379"
     command: ["--logtostderr", "--dir=/data"]
     restart: unless-stopped
     volumes:
@@ -25,12 +27,13 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  api:
-    image: hmtanbir/ruxy-api:latest
+  server:
+    image: hmtanbir/ruxy:latest
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ruxy-api
+      target: backend
+    container_name: ruxy
     restart: unless-stopped
     ports:
       - "${PORT}:7654"
@@ -39,6 +42,7 @@ services:
       - HOST=0.0.0.0
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
       - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-${ADMIN_TOKEN}}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
     depends_on:
       redis:
@@ -63,6 +67,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
 volumes:
   redis_data:
 networks:

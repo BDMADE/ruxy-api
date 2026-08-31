@@ -22,13 +22,42 @@ When public traffic hits `/:key` (e.g., `https://proxy.example.com/automation-we
 ### ✨ Key Features
 
 - **Blazing Fast & Low Footprint**: Built with [Axum](https://github.com/tokio-rs/axum), [Tokio](https://tokio.rs/), and `ConnectionManager` multiplexing over Redis/Dragonfly.
-- **Dynamic Real-Time Routing**: Update backend target routes instantaneously via Admin REST API.
+- **Dynamic Real-Time Routing**: Update backend target routes instantaneously via Admin REST API or the Web Dashboard.
+- **Leptos Web Admin Dashboard**: Beautiful, responsive WebAssembly single-page application for visual route management.
 - **Header Sanitization & Origin Protection**:
   - Automatically strips hop-by-hop headers (`connection`, `keep-alive`, `transfer-encoding`, etc.).
   - Removes identifiable origin headers (`Server`, `Via`, `X-Powered-By`).
   - Rewrites upstream redirects back to the proxy hostname.
 - **Interactive OpenAPI 3.0 & Swagger UI**: Built-in interactive documentation at `/swagger-ui/`.
 - **Production-Hardened Container**: Built from `scratch` (0 byte OS attack surface, non-root user `nobody:nobody`, no shell/terminal, read-only rootfs).
+
+---
+
+## 🖥️ Leptos Web Admin Dashboard (`client/`)
+
+Ruxy includes a modern, high-performance WebAssembly Single Page Application (SPA) built with [Leptos 0.6](https://leptos.dev/) and `leptos_router` for visual route management.
+
+### 🌟 Dashboard Features
+- **Password Authentication**: Sign in using your `ADMIN_PASSWORD` (or `ADMIN_TOKEN`). Tokens are securely stored in browser `LocalStorage` with automatic session invalidation on `401 Unauthorized`.
+- **Route Explorer**:
+  - Real-time search filter by route key or target URL.
+  - Configurable pagination (25, 50, 100 items per page).
+- **Route CRUD Operations**:
+  - Add new dynamic route mappings with live URL validation.
+  - Edit existing destination target URLs.
+  - Instant route deletion with confirmation prompts.
+- **Modern Dark UI**: Designed with glassmorphism, responsive cards, and clean typography.
+
+### 🚀 Accessing the Web Dashboard
+
+The Ruxy client is now bundled directly into the Axum backend! When you run the Docker container, the WebAssembly application is served automatically.
+
+1. Start the application via Docker Compose (see Quick Start below).
+2. Open `http://localhost:7654/admin/ui/` in your browser.
+3. Enter your configured `ADMIN_PASSWORD` (or `ADMIN_TOKEN`).
+4. Click **Sign In** to access and manage your routes.
+
+*(Note: If you are doing local frontend development, you can still run `trunk serve` inside the `client/` directory for hot-reloading.)*
 
 ---
 
@@ -72,6 +101,7 @@ RUST_LOG=info
 PORT=7654
 REDIS_URL=redis://:proxysecret@redis:6379
 ADMIN_TOKEN=change-me-super-secret-token
+ADMIN_PASSWORD=change-me-super-secret-password
 REDIS_PASSWORD=proxysecret
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/TXXXXX/BXXXXX/XXXXXXXXXXXX
 ```
@@ -83,6 +113,7 @@ docker compose up -d --build
 ```
 
 The service will start on `http://localhost:7654` with:
+- **Web Admin Dashboard**: `http://localhost:7654/admin/ui/`
 - **API / Proxy Service**: `http://localhost:7654`
 - **Swagger Documentation**: `http://localhost:7654/swagger-ui/`
 - **Health Check**: `http://localhost:7654/health`
@@ -107,19 +138,20 @@ Ruxy provides an interactive **Swagger UI** out of the box for testing and explo
 
 ## 📡 API Reference & Admin CRUD
 
-All administrative endpoints require the `x-api-key` header matching your configured `ADMIN_TOKEN`.
+Administrative route endpoints require the `x-api-key` header matching your configured `ADMIN_TOKEN`. The login endpoint authenticates using your `ADMIN_PASSWORD`.
 
 ### Endpoints Overview
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :---: |
 | `GET` | `/health` | Service health status | No |
+| `POST` | `/admin/login` | Dashboard password login | No |
 | `GET` | `/swagger-ui/` | Interactive Swagger API docs | No |
 | `GET` | `/api-docs/openapi.json` | Raw OpenAPI 3.0 specification | No |
-| `POST` | `/admin/routes` | Create or update route mapping | **Yes** |
-| `GET` | `/admin/routes` | List all dynamic route mappings | **Yes** |
-| `GET` | `/admin/routes/{*key}` | Fetch details of a specific route | **Yes** |
-| `DELETE` | `/admin/routes/{*key}` | Delete a route mapping | **Yes** |
+| `POST` | `/admin/routes` | Create or update route mapping | **Yes** (`x-api-key`) |
+| `GET` | `/admin/routes` | List all dynamic route mappings | **Yes** (`x-api-key`) |
+| `GET` | `/admin/routes/{*key}` | Fetch details of a specific route | **Yes** (`x-api-key`) |
+| `DELETE` | `/admin/routes/{*key}` | Delete a route mapping | **Yes** (`x-api-key`) |
 | `ANY` | `/{*key}` | Public proxy handler | No |
 
 ---

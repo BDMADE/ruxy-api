@@ -14,6 +14,7 @@ use axum::{
 use redis::aio::ConnectionManager;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use tower_http::services::{ServeDir, ServeFile};
 
 struct SecurityAddon;
 
@@ -31,18 +32,20 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
+use crate::admin::{LoginRequest, LoginResponse};
 use crate::state::{ApiItemResponse, ApiListResponse, ApiResponse, RouteEntry};
 
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Proxy API Service", description = "Reverse proxy with dynamic Redis-backed route mappings. Public traffic hits /:key which is forwarded to the mapped target URL. The origin stays hidden."),
     paths(
+        admin::login,
         admin::create_route,
         admin::get_route,
         admin::list_routes,
         admin::delete_route
     ),
-    components(schemas(RouteEntry, ApiItemResponse, ApiListResponse, ApiResponse)),
+    components(schemas(LoginRequest, LoginResponse, RouteEntry, ApiItemResponse, ApiListResponse, ApiResponse)),
     modifiers(&SecurityAddon)
 )]
 struct ApiDoc;
@@ -70,6 +73,7 @@ async fn main() {
 
     let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
     let admin_token = std::env::var("ADMIN_TOKEN").expect("ADMIN_TOKEN must be set");
+    let admin_password = std::env::var("ADMIN_PASSWORD").unwrap_or_else(|_| admin_token.clone());
 
     let client = redis::Client::open(redis_url).expect("invalid REDIS_URL");
     let conn = ConnectionManager::new(client)
@@ -92,6 +96,7 @@ async fn main() {
     let app_state = state::AppState {
         redis: conn,
         admin_token,
+        admin_password,
         client: http_client,
         slack_webhook_url,
         slack_rate_limits: std::sync::Arc::new(dashmap::DashMap::new()),
@@ -120,8 +125,14 @@ pub fn app_router(app_state: state::AppState) -> Router {
             auth_middleware,
         ));
 
+    let public_dir = std::env::var("PUBLIC_DIR").unwrap_or_else(|_| "./client/dist".into());
+    let serve_dir = ServeDir::new(&public_dir)
+        .fallback(ServeFile::new(format!("{}/index.html", public_dir)));
+
     Router::new()
+        .nest_service("/admin/ui", serve_dir)
         .route("/health", get(health))
+        .route("/admin/login", post(admin::login))
         .nest("/admin/routes", admin_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .fallback(any(proxy::proxy_handler))
