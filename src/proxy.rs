@@ -90,6 +90,15 @@ pub async fn proxy_handler(
         Ok(r) => r,
         Err(e) => {
             tracing::error!("forward failed for '{key}' -> {url}: {e}");
+            crate::state::notify_slack(
+                state.client.clone(),
+                state.slack_webhook_url.clone(),
+                "Upstream Forward Failed (502 Bad Gateway)".into(),
+                format!(
+                    "*Route Key:* `{}`\n*Target URL:* `{}`\n*Method:* `{}`\n*Error Details:* ```{}```",
+                    key, url, method, e
+                ),
+            );
             return Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
                 .header("content-type", "application/json")

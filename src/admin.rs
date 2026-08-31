@@ -60,6 +60,12 @@ pub async fn create_route(
     let mut conn = state.redis.clone();
     if let Err(e) = conn.set::<_, _, ()>(route_key(key), payload.value).await {
         tracing::error!("failed to write route to redis: {e}");
+        crate::state::notify_slack(
+            state.client.clone(),
+            state.slack_webhook_url.clone(),
+            "Redis Write Error (Admin Route Create)".into(),
+            format!("*Route Key:* `{}`\n*Error Details:* ```{}```", key, e),
+        );
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiResponse {

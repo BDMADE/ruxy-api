@@ -67,10 +67,13 @@ async fn main() {
         .build()
         .expect("failed to build http client");
 
+    let slack_webhook_url = std::env::var("SLACK_WEBHOOK_URL").ok();
+
     let app_state = state::AppState {
         redis: conn,
         admin_token,
         client: http_client,
+        slack_webhook_url,
     };
 
     let admin_router = Router::new()

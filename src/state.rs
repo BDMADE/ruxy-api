@@ -7,6 +7,54 @@ pub struct AppState {
     pub redis: ConnectionManager,
     pub admin_token: String,
     pub client: reqwest::Client,
+    pub slack_webhook_url: Option<String>,
+}
+
+pub fn notify_slack(
+    client: reqwest::Client,
+    webhook_url: Option<String>,
+    title: String,
+    details: String,
+) {
+    if let Some(url) = webhook_url {
+        if !url.trim().is_empty() {
+            tokio::spawn(async move {
+                let payload = serde_json::json!({
+                    "text": format!("🚨 *{}*\n{}", title, details),
+                    "blocks": [
+                        {
+                            "type": "header",
+                            "text": {
+                                "type": "plain_text",
+                                "text": format!("🚨 {}", title),
+                                "emoji": true
+                            }
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": details
+                            }
+                        },
+                        {
+                            "type": "context",
+                            "elements": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": format!("*Service:* `ruxy-api` | *Timestamp:* `{:?}`", std::time::SystemTime::now())
+                                }
+                            ]
+                        }
+                    ]
+                });
+
+                if let Err(e) = client.post(&url).json(&payload).send().await {
+                    tracing::warn!("failed to deliver slack notification: {e}");
+                }
+            });
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, ToSchema, Clone, Debug)]

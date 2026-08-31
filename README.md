@@ -73,6 +73,7 @@ PORT=7654
 REDIS_URL=redis://:proxysecret@redis:6379
 ADMIN_TOKEN=change-me-super-secret-token
 REDIS_PASSWORD=proxysecret
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/TXXXXX/BXXXXX/XXXXXXXXXXXX
 ```
 
 ### 3. Run with Docker Compose (Recommended)
