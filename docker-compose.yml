@@ -1,0 +1,71 @@
+services:
+  redis:
+    image: hmtanbir/dragonfly:latest
+    container_name: ruxy-redis
+    command: ["--logtostderr", "--dir=/data"]
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "6379"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: 2.0
+          memory: 1G
+        reservations:
+          cpus: 0.5
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    image: hmtanbir/ruxy-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ruxy-api
+    restart: unless-stopped
+    ports:
+      - "${PORT}:7654"
+    environment:
+      - PORT=7654
+      - HOST=0.0.0.0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: 1.0
+          memory: 256M
+        reservations:
+          cpus: 0.5
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  redis_data:
+networks:
+  default:
+    name: ruxy
+    driver: bridge
