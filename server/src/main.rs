@@ -12,9 +12,9 @@ use axum::{
     Router,
 };
 use redis::aio::ConnectionManager;
+use tower_http::services::{ServeDir, ServeFile};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use tower_http::services::{ServeDir, ServeFile};
 
 struct SecurityAddon;
 
@@ -126,8 +126,8 @@ pub fn app_router(app_state: state::AppState) -> Router {
         ));
 
     let public_dir = std::env::var("PUBLIC_DIR").unwrap_or_else(|_| "./client/dist".into());
-    let serve_dir = ServeDir::new(&public_dir)
-        .fallback(ServeFile::new(format!("{}/index.html", public_dir)));
+    let serve_dir =
+        ServeDir::new(&public_dir).fallback(ServeFile::new(format!("{}/index.html", public_dir)));
 
     Router::new()
         .nest_service("/admin/ui", serve_dir)

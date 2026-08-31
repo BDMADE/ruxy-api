@@ -54,7 +54,11 @@ pub fn RouteForm() -> impl IntoView {
             if let Some(t) = auth_token {
                 if let Some(old_key) = &original_key {
                     if old_key != &req.key {
-                        let _ = api_delete::<ApiResponse>(&format!("/admin/routes/{}", old_key), Some(&t)).await;
+                        let _ = api_delete::<ApiResponse>(
+                            &format!("/admin/routes/{}", old_key),
+                            Some(&t),
+                        )
+                        .await;
                     }
                 }
                 match api_post::<_, ApiResponse>("/admin/routes", Some(&t), &req).await {
