@@ -127,6 +127,11 @@ All administrative endpoints require the `x-api-key` header matching your config
 
 `POST /admin/routes`
 
+> **Key Format Rules:**
+> - `key` must be a path identifier or slug (e.g. `webhook`, `payment-api`, `auth`).
+> - `key` **cannot** contain protocols like `://` (e.g. `https://` is rejected with `400 Bad Request`).
+> - `value` (or alias `target`) must be a valid destination URL starting with `http://` or `https://`.
+
 **Headers:**
 ```http
 Content-Type: application/json
@@ -136,8 +141,8 @@ x-api-key: <ADMIN_TOKEN>
 **Request Body:**
 ```json
 {
-  "key": "https://yeapin.xyz",
-  "value": "https://automation.bdmade.dev"
+  "key": "webhook",
+  "value": "https://automation.bdmade.dev/webhook-test"
 }
 ```
 *(Note: Both `"value"` and `"target"` are supported interchangeably in the payload).*
@@ -146,7 +151,7 @@ x-api-key: <ADMIN_TOKEN>
 ```json
 {
   "success": true,
-  "message": "route 'https://yeapin.xyz' saved"
+  "message": "route 'webhook' saved"
 }
 ```
 
@@ -166,12 +171,12 @@ x-api-key: <ADMIN_TOKEN>
 {
   "data": [
     {
-      "key": "https://yeapin.xyz",
-      "value": "https://automation.bdmade.dev"
+      "key": "payment-api",
+      "value": "https://api.payment.onboarding.bdmade.dev"
     },
     {
       "key": "webhook-test",
-      "value": "https://api.internal.network/v1/hook"
+      "value": "https://yepin.app.n8n.cloud/webhook-test"
     }
   ],
   "message": "Successfully data fetched",
@@ -185,7 +190,7 @@ x-api-key: <ADMIN_TOKEN>
 
 `GET /admin/routes/{*key}`
 
-Supports both plain keys, URL paths, and percent-encoded keys (e.g. `/admin/routes/https://yeapin.xyz` or `/admin/routes/webhook-test`).
+Fetch a specific route mapping by its key (e.g. `/admin/routes/webhook-test`).
 
 **Headers:**
 ```http
@@ -196,8 +201,8 @@ x-api-key: <ADMIN_TOKEN>
 ```json
 {
   "data": {
-    "key": "https://yeapin.xyz",
-    "value": "https://automation.bdmade.dev"
+    "key": "webhook-test",
+    "value": "https://yepin.app.n8n.cloud/webhook-test"
   },
   "message": "Successfully data fetched",
   "status": 200
@@ -210,6 +215,8 @@ x-api-key: <ADMIN_TOKEN>
 
 `DELETE /admin/routes/{*key}`
 
+Delete a route mapping by its key (e.g. `/admin/routes/webhook-test`).
+
 **Headers:**
 ```http
 x-api-key: <ADMIN_TOKEN>
@@ -219,7 +226,7 @@ x-api-key: <ADMIN_TOKEN>
 ```json
 {
   "success": true,
-  "message": "route 'https://yeapin.xyz' deleted"
+  "message": "route 'webhook-test' deleted"
 }
 ```
 
