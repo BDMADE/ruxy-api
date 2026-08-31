@@ -24,17 +24,17 @@ mod tests {
         dotenvy::dotenv().ok();
         let mut redis_url =
             std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
-            
+
         // If the URL from .env points to the docker-compose internal 'redis' hostname,
         // rewrite it to localhost so cargo test on the host machine works.
         redis_url = redis_url.replace("@redis:6379", "@127.0.0.1:6379");
         redis_url = redis_url.replace("redis://redis:6379", "redis://127.0.0.1:6379");
         let client = redis::Client::open(redis_url).expect("invalid REDIS_URL");
-        
+
         // Use a timeout so tests fail fast instead of hanging forever if Redis is down
         let conn = tokio::time::timeout(
             std::time::Duration::from_secs(3),
-            ConnectionManager::new(client)
+            ConnectionManager::new(client),
         )
         .await
         .expect("Redis connection timed out. Is Redis running locally on port 6379?")
@@ -48,7 +48,7 @@ mod tests {
             .unwrap();
 
         let prefix = format!("test_{}", Uuid::new_v4().simple());
-        
+
         let app_state = AppState {
             redis: conn,
             admin_token: "test-secret".to_string(),
@@ -121,37 +121,37 @@ mod tests {
         state.slack_rate_limit_seconds = 1; // 1 second debounce for test
 
         let key = "debounce_test_key";
-        
+
         assert!(state.slack_rate_limits.get(key).is_none());
-        
+
         notify_slack_debounced(&state, key, "Test".into(), "Details".into());
-        
+
         // Now it should be set
         let first_timestamp = *state.slack_rate_limits.get(key).unwrap();
-        
+
         // Second call immediately should debounce (timestamp won't change)
         notify_slack_debounced(&state, key, "Test".into(), "Details".into());
         let second_timestamp = *state.slack_rate_limits.get(key).unwrap();
         assert_eq!(first_timestamp, second_timestamp);
-        
+
         // Wait 1.1s
         tokio::time::sleep(Duration::from_millis(1100)).await;
-        
+
         // Third call should go through and update timestamp
         notify_slack_debounced(&state, key, "Test".into(), "Details".into());
         let third_timestamp = *state.slack_rate_limits.get(key).unwrap();
         assert!(third_timestamp > first_timestamp);
     }
-    
+
     #[tokio::test]
     async fn test_notify_slack_live_webhook_fires() {
         let mock_server = MockServer::start().await;
-        
+
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200))
             .mount(&mock_server)
             .await;
-            
+
         let (mut state, _) = setup_state().await;
         // Mock a real webhook URL
         state.slack_webhook_url = Some(mock_server.uri());
@@ -159,10 +159,10 @@ mod tests {
 
         let key = "debounce_live_test_key";
         notify_slack_debounced(&state, key, "Live Test".into(), "Details".into());
-        
+
         // Give the tokio::spawn task time to run and make the HTTP request
         tokio::time::sleep(Duration::from_millis(100)).await;
-        
+
         let requests = mock_server.received_requests().await.unwrap();
         assert_eq!(requests.len(), 1);
         let body = String::from_utf8(requests[0].body.clone()).unwrap();
@@ -194,7 +194,7 @@ mod tests {
     #[tokio::test]
     async fn test_auth_middleware_valid_and_list() {
         let (state, prefix) = setup_state().await;
-        
+
         let key = format!("{prefix}_list");
         let mut conn = state.redis.clone();
         let _: () = conn.set(route_key(&key), "http://list.com").await.unwrap();
@@ -214,11 +214,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         let body = get_body_string(response).await;
         assert!(body.contains(&key));
         assert!(body.contains("http://list.com"));
-        
+
         let _: () = conn.del(route_key(&key)).await.unwrap();
     }
 
@@ -287,10 +287,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         let target = get_target(&state, &key).await.unwrap().unwrap();
         assert_eq!(target, "http://example.com/");
-        
+
         let mut conn = state.redis.clone();
         let _: () = conn.del(route_key(&key)).await.unwrap();
     }
@@ -478,7 +478,12 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::NOT_FOUND, "failed for {}", path);
+            assert_eq!(
+                response.status(),
+                StatusCode::NOT_FOUND,
+                "failed for {}",
+                path
+            );
         }
     }
 
@@ -510,14 +515,14 @@ mod tests {
     #[tokio::test]
     async fn test_proxy_forwarding_and_headers() {
         let mock_server = MockServer::start().await;
-        
+
         Mock::given(method("GET"))
             .and(path("/api/v1/users"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_string("mocked_response")
                     .append_header("Server", "Mock")
-                    .append_header("X-Custom", "Value")
+                    .append_header("X-Custom", "Value"),
             )
             .mount(&mock_server)
             .await;
@@ -544,22 +549,22 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         // Ensure upstream headers were stripped
         assert!(response.headers().get("Server").is_none());
         assert!(response.headers().get("X-Custom").is_some());
 
         let body = get_body_string(response).await;
         assert_eq!(body, "mocked_response");
-        
+
         // Check requests received by mock
         let requests = mock_server.received_requests().await.unwrap();
         assert_eq!(requests.len(), 1);
         let req = &requests[0];
-        
+
         // Check query string
         assert_eq!(req.url.query(), Some("query=1"));
-        
+
         // Ensure downstream headers were stripped
         assert!(req.headers.get("x-api-key").is_none());
         assert!(req.headers.get("connection").is_none());
@@ -567,19 +572,16 @@ mod tests {
 
         let _: () = conn.del(route_key(&key)).await.unwrap();
     }
-    
+
     #[tokio::test]
     async fn test_proxy_redirect_rewrite() {
         let mock_server = MockServer::start().await;
-        
+
         let target = format!("{}/", mock_server.uri()); // Target with trailing slash
-        let redirect_url = format!("{}login", target); 
-        
+        let redirect_url = format!("{}login", target);
+
         Mock::given(method("GET"))
-            .respond_with(
-                ResponseTemplate::new(302)
-                    .append_header("Location", redirect_url)
-            )
+            .respond_with(ResponseTemplate::new(302).append_header("Location", redirect_url))
             .mount(&mock_server)
             .await;
 
@@ -602,25 +604,29 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::FOUND);
-        
+
         // The location should be rewritten to hide the mock server's host
-        let location = response.headers().get("location").unwrap().to_str().unwrap();
+        let location = response
+            .headers()
+            .get("location")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert_eq!(location, format!("/{}/login", key));
 
         let _: () = conn.del(route_key(&key)).await.unwrap();
     }
-    
+
     #[tokio::test]
     async fn test_proxy_redirect_external_rewrite() {
         let mock_server = MockServer::start().await;
-        
+
         let target = format!("{}/", mock_server.uri());
-        let redirect_url = "https://external.com/login".to_string(); 
-        
+        let redirect_url = "https://external.com/login".to_string();
+
         Mock::given(method("GET"))
             .respond_with(
-                ResponseTemplate::new(302)
-                    .append_header("Location", redirect_url.clone())
+                ResponseTemplate::new(302).append_header("Location", redirect_url.clone()),
             )
             .mount(&mock_server)
             .await;
@@ -644,9 +650,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::FOUND);
-        
+
         // The location should NOT be rewritten because it does not match the target
-        let location = response.headers().get("location").unwrap().to_str().unwrap();
+        let location = response
+            .headers()
+            .get("location")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert_eq!(location, redirect_url);
 
         let _: () = conn.del(route_key(&key)).await.unwrap();
@@ -655,7 +666,7 @@ mod tests {
     #[tokio::test]
     async fn test_proxy_post_body_streaming() {
         let mock_server = MockServer::start().await;
-        
+
         Mock::given(method("POST"))
             .and(path("/api/data"))
             .respond_with(ResponseTemplate::new(200))
@@ -681,7 +692,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         let requests = mock_server.received_requests().await.unwrap();
         assert_eq!(requests.len(), 1);
         let req = &requests[0];
@@ -698,7 +709,10 @@ mod tests {
 
         let mut conn = state.redis.clone();
         // Point to a guaranteed dead local port
-        let _: () = conn.set(route_key(&key), "http://127.0.0.1:9999").await.unwrap();
+        let _: () = conn
+            .set(route_key(&key), "http://127.0.0.1:9999")
+            .await
+            .unwrap();
 
         let response = app
             .oneshot(

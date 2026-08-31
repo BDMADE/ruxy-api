@@ -20,20 +20,22 @@ pub fn notify_slack_debounced(
 ) {
     let now = std::time::Instant::now();
     let limit_duration = std::time::Duration::from_secs(state.slack_rate_limit_seconds);
-    
+
     // Check if we should debounce
     if let Some(last_sent) = state.slack_rate_limits.get(debounce_key) {
         if now.duration_since(*last_sent) < limit_duration {
             return; // Debounced
         }
     }
-    
+
     // Update the timestamp
-    state.slack_rate_limits.insert(debounce_key.to_string(), now);
-    
+    state
+        .slack_rate_limits
+        .insert(debounce_key.to_string(), now);
+
     let client = state.client.clone();
     let webhook_url = state.slack_webhook_url.clone();
-    
+
     if let Some(url) = webhook_url {
         if !url.trim().is_empty() {
             tokio::spawn(async move {

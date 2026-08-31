@@ -88,7 +88,7 @@ pub async fn create_route(
         tracing::error!("failed to write route to redis: {e}");
         crate::state::notify_slack_debounced(
             &state,
-            &key,
+            key,
             "Redis Write Error (Admin Route Create)".into(),
             format!("*Route Key:* `{}`\n*Error Details:* ```{}```", key, e),
         );
