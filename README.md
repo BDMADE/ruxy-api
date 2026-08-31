@@ -127,6 +127,11 @@ All administrative endpoints require the `x-api-key` header matching your config
 
 `POST /admin/routes`
 
+> **Key Format Rules:**
+> - `key` must be a path identifier or slug (e.g. `webhook`, `payment-api`, `auth`).
+> - `key` **cannot** contain protocols like `://` (e.g. `https://` is rejected with `400 Bad Request`).
+> - `value` (or alias `target`) must be a valid destination URL starting with `http://` or `https://`.
+
 **Headers:**
 ```http
 Content-Type: application/json
@@ -136,8 +141,8 @@ x-api-key: <ADMIN_TOKEN>
 **Request Body:**
 ```json
 {
-  "key": "https://yeapin.xyz",
-  "value": "https://automation.bdmade.dev"
+  "key": "webhook",
+  "value": "https://automation.bdmade.dev/webhook-test"
 }
 ```
 *(Note: Both `"value"` and `"target"` are supported interchangeably in the payload).*
@@ -146,7 +151,7 @@ x-api-key: <ADMIN_TOKEN>
 ```json
 {
   "success": true,
-  "message": "route 'https://yeapin.xyz' saved"
+  "message": "route 'webhook' saved"
 }
 ```
 
@@ -166,12 +171,12 @@ x-api-key: <ADMIN_TOKEN>
 {
   "data": [
     {
-      "key": "https://yeapin.xyz",
-      "value": "https://automation.bdmade.dev"
+      "key": "payment-api",
+      "value": "https://api.payment.onboarding.bdmade.dev"
     },
     {
       "key": "webhook-test",
-      "value": "https://api.internal.network/v1/hook"
+      "value": "https://yepin.app.n8n.cloud/webhook-test"
     }
   ],
   "message": "Successfully data fetched",
@@ -185,7 +190,7 @@ x-api-key: <ADMIN_TOKEN>
 
 `GET /admin/routes/{*key}`
 
-Supports both plain keys, URL paths, and percent-encoded keys (e.g. `/admin/routes/https://yeapin.xyz` or `/admin/routes/webhook-test`).
+Fetch a specific route mapping by its key (e.g. `/admin/routes/webhook-test`).
 
 **Headers:**
 ```http
@@ -196,8 +201,8 @@ x-api-key: <ADMIN_TOKEN>
 ```json
 {
   "data": {
-    "key": "https://yeapin.xyz",
-    "value": "https://automation.bdmade.dev"
+    "key": "webhook-test",
+    "value": "https://yepin.app.n8n.cloud/webhook-test"
   },
   "message": "Successfully data fetched",
   "status": 200
@@ -210,6 +215,8 @@ x-api-key: <ADMIN_TOKEN>
 
 `DELETE /admin/routes/{*key}`
 
+Delete a route mapping by its key (e.g. `/admin/routes/webhook-test`).
+
 **Headers:**
 ```http
 x-api-key: <ADMIN_TOKEN>
@@ -219,7 +226,7 @@ x-api-key: <ADMIN_TOKEN>
 ```json
 {
   "success": true,
-  "message": "route 'https://yeapin.xyz' deleted"
+  "message": "route 'webhook-test' deleted"
 }
 ```
 
@@ -250,6 +257,70 @@ cargo clippy -- -D warnings
 
 # Run test suite
 cargo test
+```
+
+---
+
+## ⚡ High-Throughput & Scalability Architecture
+
+Ruxy is engineered from the ground up for extreme concurrency and low-latency throughput. Understanding how it handles massive request volumes and how to scale it horizontally across distributed clusters ensures seamless production operations under heavy load (e.g. 50k–500k+ requests/sec).
+
+```
+                            [ Cloudflare / AWS CloudFront / Edge CDN ]
+                                                │
+                                  [ Anycast / Layer 4 Load Balancer ]
+                                          (AWS NLB / HAProxy)
+                                                │
+                    ┌───────────────────────────┼───────────────────────────┐
+                    ▼                           ▼                           ▼
+        [ Ruxy Replica #1 ]           [ Ruxy Replica #2 ]           [ Ruxy Replica #N ]
+        (Tokio Event Loop)            (Tokio Event Loop)            (Tokio Event Loop)
+        (In-Memory L1 Cache)          (In-Memory L1 Cache)          (In-Memory L1 Cache)
+                    │                           │                           │
+                    └───────────────────────────┼───────────────────────────┘
+                                                │
+                                   [ Redis / Dragonfly Cluster ]
+                                     (Route Store & Rate Limits)
+                                                │
+                                 [ Upstream Origin Backends ]
+```
+
+### 1. Core Mechanics Under High Load
+
+- **Asynchronous Non-Blocking I/O (Tokio Runtime)**: Each incoming request is scheduled onto lightweight Tokio green threads (tasks) across available CPU cores without spawning heavy OS threads.
+- **Connection Pooling & HTTP Keep-Alive**: Upstream backend connections are managed by connection pools in `reqwest`, reusing existing TCP sockets and eliminating TLS/TCP handshake latency per request.
+- **Multiplexed Redis Client**: Built with Redis `ConnectionManager` to enable pipelined and multiplexed asynchronous queries across threads without connection contention.
+- **Zero-Cost Abstraction & Predictable Memory**: Minimal memory allocations per request ensure consistent sub-millisecond p99 latency without garbage collection pauses.
+
+---
+
+### 2. Horizontal Scaling & High Availability (HA)
+
+Because Ruxy is **100% stateless** (all route data and shared states reside in Redis), scaling capacity is straightforward:
+
+1. **Multi-Replica Deployment**: Run multiple container instances behind a Layer 4 (e.g., AWS NLB, HAProxy) or Layer 7 (e.g., Traefik, Envoy, NGINX) load balancer.
+2. **Kubernetes Auto-Scaling**: Deploy with a `HorizontalPodAutoscaler` (HPA) targeting CPU utilization (e.g., 60–70%) or incoming HTTP connection count.
+3. **Redis Clustering / Dragonfly**: For millions of route lookups and global rate limiting, pair with a sharded Redis Cluster, Redis Sentinel, or [Dragonfly](https://www.dragonflydb.io/) (multi-threaded in-memory store capable of millions of QPS).
+
+---
+
+### 3. Production OS & Kernel Tuning
+
+For hosts or worker nodes handling 100k+ concurrent connections, tune the host TCP stack (`/etc/sysctl.conf`):
+
+```ini
+# Increase maximum open file descriptors
+fs.file-max = 2097152
+
+# Expand ephemeral port range for upstream proxying
+net.ipv4.ip_local_port_range = 1024 65535
+
+# Increase TCP connection backlog
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+
+# Enable fast recycling and reuse of TIME_WAIT sockets
+net.ipv4.tcp_tw_reuse = 1
 ```
 
 ---

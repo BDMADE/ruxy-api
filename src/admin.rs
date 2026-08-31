@@ -37,6 +37,16 @@ pub async fn create_route(
         )
             .into_response();
     }
+    if key.contains("://") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                success: false,
+                message: "key cannot contain '://'".into(),
+            }),
+        )
+            .into_response();
+    }
     if !payload.value.starts_with("http://") && !payload.value.starts_with("https://") {
         return (
             StatusCode::BAD_REQUEST,
