@@ -48,10 +48,10 @@ Protected by API Key authentication via `x-api-key` header matching `ADMIN_TOKEN
 
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
-| `/admin/routes` | `POST` | Create or update a dynamic route mapping (`key` -> `value` / `target`). |
-| `/admin/routes` | `GET` | Paginated/scanned list of all active route mappings. |
-| `/admin/routes/{*key}` | `GET` | Inspect details of a specific route key. |
-| `/admin/routes/{*key}` | `DELETE` | Delete a route mapping instantaneously. |
+| `/admin/api/routes` | `POST` | Create or update a dynamic route mapping (`key` -> `value` / `target`). |
+| `/admin/api/routes` | `GET` | Paginated/scanned list of all active route mappings. |
+| `/admin/api/routes/{*key}` | `GET` | Inspect details of a specific route key. |
+| `/admin/api/routes/{*key}` | `DELETE` | Delete a route mapping instantaneously. |
 
 ### 3. Redis / Dragonfly Data Layer (`src/state.rs`)
 - Uses `redis::aio::ConnectionManager` for auto-reconnecting, multiplexed, asynchronous command pipelining.
@@ -153,9 +153,9 @@ A complete review of the repository across `server/`, `client/`, CI/CD, Docker c
 ### 🟡 High Priority Missing Implementations (Functional & Integration Gaps)
 
 #### 5. `server/src/main.rs`: Static Asset Serving for Leptos Admin Client
-- **Issue**: The Axum server currently only serves API endpoints and falls back directly to `proxy::proxy_handler`. There is no route or static file handler to serve the compiled Leptos client WebAssembly / HTML bundle (e.g. at `/admin/ui` or `/`).
+- **Issue**: The Axum server currently only serves API endpoints and falls back directly to `proxy::proxy_handler`. There is no route or static file handler to serve the compiled Leptos client WebAssembly / HTML bundle (e.g. at `/admin/dashboard` or `/`).
 - **Impact**: The web dashboard cannot be accessed directly from the deployed proxy server without running a separate web server.
-- **Resolution**: Add static file serving (using `tower_http::services::ServeDir` or `rust-embed`) to serve the client dashboard at `/admin/ui` or dedicated path.
+- **Resolution**: Add static file serving (using `tower_http::services::ServeDir` or `rust-embed`) to serve the client dashboard at `/admin/dashboard` or dedicated path.
 
 #### 6. CORS Configuration for Local Development (`tower_http::cors`)
 - **Issue**: When developing locally with Trunk (`http://localhost:3000`) and the API server (`http://localhost:7654`), direct API calls or swagger requests across origins need CORS headers.
@@ -179,7 +179,7 @@ A complete review of the repository across `server/`, `client/`, CI/CD, Docker c
 
 #### 10. `client/nginx.conf`: Wrong Proxy Port (7653 vs 7654)
 - **Issue**: The Nginx reverse proxy for the `/admin/` location proxies to `http://server:7653/admin/`, but the Axum server container listens on port `7654` (as set by `PORT=7654` in `docker-compose.yml`).
-- **Impact**: All API calls from the Leptos client dashboard (`/admin/login`, `/admin/routes`) fail with `502 Bad Gateway` in Docker Compose deployment.
+- **Impact**: All API calls from the Leptos client dashboard (`/admin/login`, `/admin/api/routes`) fail with `502 Bad Gateway` in Docker Compose deployment.
 - **Resolution**: Change `proxy_pass http://server:7653/admin/;` to `proxy_pass http://server:7654/admin/;` in `client/nginx.conf`.
 
 #### 11. `.github/workflows/ci.yml`: Docker Build Missing `target: backend`

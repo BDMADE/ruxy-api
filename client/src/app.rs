@@ -13,8 +13,8 @@ pub fn App() -> impl IntoView {
     view! {
         <Router>
             <Routes>
-                <Route path="/admin/ui/login" view=LoginPage/>
-                <Route path="/admin/ui" view=AdminLayout>
+                <Route path="/admin/dashboard/login" view=LoginPage/>
+                <Route path="/admin/dashboard" view=AdminLayout>
                     <Route path="" view=RouteList/>
                     <Route path="routes/new" view=RouteForm/>
                     <Route path="routes/:key/edit" view=RouteForm/>

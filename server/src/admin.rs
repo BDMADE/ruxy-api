@@ -72,7 +72,7 @@ pub async fn login(
 /// Create or update a route mapping
 #[utoipa::path(
     post,
-    path = "/admin/routes",
+    path = "/admin/api/routes",
     request_body = RouteEntry,
     responses(
         (status = 200, description = "Route created/updated", body = ApiResponse),
@@ -173,7 +173,7 @@ pub async fn create_route(
 /// Get a route mapping
 #[utoipa::path(
     get,
-    path = "/admin/routes/{key}",
+    path = "/admin/api/routes/{key}",
     params(("key" = String, Path, description = "Proxy key (URL or identifier)")),
     responses(
         (status = 200, description = "Mapping found", body = ApiItemResponse),
@@ -227,7 +227,7 @@ pub async fn get_route(
 /// List all route mappings
 #[utoipa::path(
     get,
-    path = "/admin/routes",
+    path = "/admin/api/routes",
     responses(
         (status = 200, description = "List of route mappings", body = ApiListResponse),
         (status = 401, description = "Unauthorized")
@@ -263,7 +263,7 @@ pub async fn list_routes(State(state): State<AppState>) -> impl IntoResponse {
 /// Delete a route mapping
 #[utoipa::path(
     delete,
-    path = "/admin/routes/{key}",
+    path = "/admin/api/routes/{key}",
     params(("key" = String, Path, description = "Proxy key (URL or identifier)")),
     responses(
         (status = 200, description = "Deleted", body = ApiResponse),
