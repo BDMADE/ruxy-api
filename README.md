@@ -97,6 +97,7 @@ cp .env.example .env
 Configure your `.env` variables:
 
 ```ini
+BASE_URL=https://example.com
 RUST_LOG=info
 PORT=7654
 REDIS_URL=redis://:proxysecret@redis:6379
@@ -104,6 +105,7 @@ ADMIN_TOKEN=change-me-super-secret-token
 ADMIN_PASSWORD=change-me-super-secret-password
 REDIS_PASSWORD=proxysecret
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/TXXXXX/BXXXXX/XXXXXXXXXXXX
+SLACK_RATE_LIMIT_SECONDS=60
 ```
 
 ### 3. Run with Docker Compose (Recommended)
