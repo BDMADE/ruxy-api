@@ -15,7 +15,7 @@ pub fn LoginPage() -> impl IntoView {
     let nav_redirect = navigate.clone();
     create_effect(move |_| {
         if auth.is_authenticated.get() {
-            nav_redirect("/admin/ui", Default::default());
+            nav_redirect("/admin/dashboard", Default::default());
         }
     });
 
@@ -28,7 +28,7 @@ pub fn LoginPage() -> impl IntoView {
         spawn_local(async move {
             match login(password.get()).await {
                 Ok(_) => {
-                    nav("/admin/ui", Default::default());
+                    nav("/admin/dashboard", Default::default());
                 }
                 Err(e) => {
                     set_error_msg.set(Some(e));

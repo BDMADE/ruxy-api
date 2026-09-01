@@ -16,7 +16,7 @@ pub fn RouteList() -> impl IntoView {
         move || (auth.token.get(), reload.get()),
         move |(token, _)| async move {
             if let Some(t) = token {
-                api_get::<ApiListResponse>("/admin/routes", Some(&t))
+                api_get::<ApiListResponse>("/admin/api/routes", Some(&t))
                     .await
                     .map(|r| r.data)
             } else {
@@ -63,7 +63,7 @@ pub fn RouteList() -> impl IntoView {
             let auth_token = auth.token.get_untracked();
             spawn_local(async move {
                 if let Some(t) = auth_token {
-                    match api_delete::<ApiResponse>(&format!("/admin/routes/{}", key), Some(&t))
+                    match api_delete::<ApiResponse>(&format!("/admin/api/routes/{}", key), Some(&t))
                         .await
                     {
                         Ok(_) => set_reload.update(|n| *n += 1),
@@ -80,7 +80,7 @@ pub fn RouteList() -> impl IntoView {
         <div>
             <div style="display:flex; justify-content:space-between; margin-bottom: 24px;">
                 <h2>"Routes"</h2>
-                <A href="/admin/ui/routes/new" class="btn">"+ Add Route"</A>
+                <A href="/admin/dashboard/routes/new" class="btn">"+ Add Route"</A>
             </div>
 
             <div class="card">
@@ -114,7 +114,7 @@ pub fn RouteList() -> impl IntoView {
                                         <td>{route.value}</td>
                                         <td>
                                             <span style="margin-right: 8px;">
-                                                <A href=format!("/admin/ui/routes/{}/edit", key_clone)>"✏️"</A>
+                                                <A href=format!("/admin/dashboard/routes/{}/edit", key_clone)>"✏️"</A>
                                             </span>
                                             <button style="background:none; border:none; cursor:pointer;" on:click=move |_| delete_route(key_for_delete.clone())>"🗑️"</button>
                                         </td>

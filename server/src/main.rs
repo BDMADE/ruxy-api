@@ -130,10 +130,10 @@ pub fn app_router(app_state: state::AppState) -> Router {
         ServeDir::new(&public_dir).fallback(ServeFile::new(format!("{}/index.html", public_dir)));
 
     Router::new()
-        .nest_service("/admin/ui", serve_dir)
+        .nest_service("/admin/dashboard", serve_dir)
         .route("/health", get(health))
         .route("/admin/login", post(admin::login))
-        .nest("/admin/routes", admin_router)
+        .nest("/admin/api/routes", admin_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .fallback(any(proxy::proxy_handler))
         .with_state(app_state)

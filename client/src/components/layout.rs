@@ -11,14 +11,14 @@ pub fn AdminLayout() -> impl IntoView {
     let nav_guard = navigate.clone();
     create_effect(move |_| {
         if !auth.is_authenticated.get() {
-            nav_guard("/admin/ui/login", Default::default());
+            nav_guard("/admin/dashboard/login", Default::default());
         }
     });
 
     let nav_logout = navigate.clone();
     let handle_logout = move |_| {
         logout();
-        nav_logout("/admin/ui/login", Default::default());
+        nav_logout("/admin/dashboard/login", Default::default());
     };
 
     view! {
@@ -26,7 +26,7 @@ pub fn AdminLayout() -> impl IntoView {
             <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; border-bottom: 1px solid var(--border); padding-bottom: 16px;">
                 <h1>"Ruxy Admin"</h1>
                 <div style="display: flex; gap: 16px; align-items: center;">
-                    <A href="/admin/ui" class="nav-link">"Routes"</A>
+                    <A href="/admin/dashboard" class="nav-link">"Routes"</A>
                     <button class="btn btn-danger" on:click=handle_logout>"Logout"</button>
                 </div>
             </header>

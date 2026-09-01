@@ -206,7 +206,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "test-secret")
                     .body(Body::empty())
                     .unwrap(),
@@ -232,7 +232,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "wrong-secret")
                     .body(Body::empty())
                     .unwrap(),
@@ -254,7 +254,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -278,7 +278,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "test-secret")
                     .header("content-type", "application/json")
                     .body(Body::from(payload))
@@ -309,7 +309,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "test-secret")
                     .header("content-type", "application/json")
                     .body(Body::from(payload_empty_key))
@@ -326,7 +326,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "test-secret")
                     .header("content-type", "application/json")
                     .body(Body::from(payload_bad_key))
@@ -343,7 +343,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "test-secret")
                     .header("content-type", "application/json")
                     .body(Body::from(payload_unparseable))
@@ -360,7 +360,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "test-secret")
                     .header("content-type", "application/json")
                     .body(Body::from(payload))
@@ -376,7 +376,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/admin/routes")
+                    .uri("/admin/api/routes")
                     .header("x-api-key", "test-secret")
                     .header("content-type", "application/json")
                     .body(Body::from(payload2))
@@ -402,7 +402,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(&format!("/admin/routes/{}", key))
+                    .uri(&format!("/admin/api/routes/{}", key))
                     .header("x-api-key", "test-secret")
                     .body(Body::empty())
                     .unwrap(),
@@ -419,7 +419,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("DELETE")
-                    .uri(&format!("/admin/routes/{}", key))
+                    .uri(&format!("/admin/api/routes/{}", key))
                     .header("x-api-key", "test-secret")
                     .body(Body::empty())
                     .unwrap(),
@@ -434,7 +434,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(&format!("/admin/routes/{}", key))
+                    .uri(&format!("/admin/api/routes/{}", key))
                     .header("x-api-key", "test-secret")
                     .body(Body::empty())
                     .unwrap(),
@@ -448,7 +448,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("DELETE")
-                    .uri(&format!("/admin/routes/{}", key))
+                    .uri(&format!("/admin/api/routes/{}", key))
                     .header("x-api-key", "test-secret")
                     .body(Body::empty())
                     .unwrap(),
