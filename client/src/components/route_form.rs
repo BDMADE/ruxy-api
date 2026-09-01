@@ -24,9 +24,11 @@ pub fn RouteForm() -> impl IntoView {
             let auth_token = auth.token.get_untracked();
             spawn_local(async move {
                 if let Some(t) = auth_token {
-                    if let Ok(res) =
-                        api_get::<ApiItemResponse>(&format!("/admin/routes/{}", edit_key), Some(&t))
-                            .await
+                    if let Ok(res) = api_get::<ApiItemResponse>(
+                        &format!("/admin/api/routes/{}", edit_key),
+                        Some(&t),
+                    )
+                    .await
                     {
                         if let Some(data) = res.data {
                             set_value.set(data.value);
@@ -55,14 +57,14 @@ pub fn RouteForm() -> impl IntoView {
                 if let Some(old_key) = &original_key {
                     if old_key != &req.key {
                         let _ = api_delete::<ApiResponse>(
-                            &format!("/admin/routes/{}", old_key),
+                            &format!("/admin/api/routes/{}", old_key),
                             Some(&t),
                         )
                         .await;
                     }
                 }
-                match api_post::<_, ApiResponse>("/admin/routes", Some(&t), &req).await {
-                    Ok(_) => nav("/admin/ui", Default::default()),
+                match api_post::<_, ApiResponse>("/admin/api/routes", Some(&t), &req).await {
+                    Ok(_) => nav("/admin/dashboard", Default::default()),
                     Err(e) => set_error_msg.set(Some(e.to_string())),
                 }
             }
@@ -73,7 +75,7 @@ pub fn RouteForm() -> impl IntoView {
     view! {
         <div>
             <div style="margin-bottom: 24px;">
-                <A href="/admin/ui" class="back-link">"← Back to Routes"</A>
+                <A href="/admin/dashboard" class="back-link">"← Back to Routes"</A>
             </div>
             <div class="card" style="max-width: 600px; margin: 0 auto;">
                 <h2 style="margin-bottom: 24px;">{move || if is_edit.get() { "Edit Route" } else { "Create New Route" }}</h2>
@@ -107,7 +109,7 @@ pub fn RouteForm() -> impl IntoView {
                         <button type="submit" class="btn" disabled=is_loading>
                             {move || if is_loading.get() { "Saving..." } else { "💾 Save Route" }}
                         </button>
-                        <A href="/admin/ui" class="btn btn-secondary">"Cancel"</A>
+                        <A href="/admin/dashboard" class="btn btn-secondary">"Cancel"</A>
                     </div>
 
                     {move || error_msg.get().map(|msg| view! {

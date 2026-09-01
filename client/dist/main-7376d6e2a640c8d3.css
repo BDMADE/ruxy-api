@@ -50,6 +50,24 @@ body {
   background-color: var(--danger);
 }
 
+.btn-secondary {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  text-decoration: none;
+  display: inline-block;
+}
+
+.nav-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.back-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
 .input {
   width: 100%;
   padding: 10px;

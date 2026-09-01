@@ -53,7 +53,7 @@ Ruxy includes a modern, high-performance WebAssembly Single Page Application (SP
 The Ruxy client is now bundled directly into the Axum backend! When you run the Docker container, the WebAssembly application is served automatically.
 
 1. Start the application via Docker Compose (see Quick Start below).
-2. Open `http://localhost:7654/admin/ui/` in your browser.
+2. Open `http://localhost:7654/admin/dashboard/` in your browser.
 3. Enter your configured `ADMIN_PASSWORD` (or `ADMIN_TOKEN`).
 4. Click **Sign In** to access and manage your routes.
 
@@ -97,6 +97,7 @@ cp .env.example .env
 Configure your `.env` variables:
 
 ```ini
+BASE_URL=https://example.com
 RUST_LOG=info
 PORT=7654
 REDIS_URL=redis://:proxysecret@redis:6379
@@ -104,6 +105,7 @@ ADMIN_TOKEN=change-me-super-secret-token
 ADMIN_PASSWORD=change-me-super-secret-password
 REDIS_PASSWORD=proxysecret
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/TXXXXX/BXXXXX/XXXXXXXXXXXX
+SLACK_RATE_LIMIT_SECONDS=60
 ```
 
 ### 3. Run with Docker Compose (Recommended)
@@ -113,7 +115,7 @@ docker compose up -d --build
 ```
 
 The service will start on `http://localhost:7654` with:
-- **Web Admin Dashboard**: `http://localhost:7654/admin/ui/`
+- **Web Admin Dashboard**: `http://localhost:7654/admin/dashboard/`
 - **API / Proxy Service**: `http://localhost:7654`
 - **Swagger Documentation**: `http://localhost:7654/swagger-ui/`
 - **Health Check**: `http://localhost:7654/health`
@@ -148,17 +150,17 @@ Administrative route endpoints require the `x-api-key` header matching your conf
 | `POST` | `/admin/login` | Dashboard password login | No |
 | `GET` | `/swagger-ui/` | Interactive Swagger API docs | No |
 | `GET` | `/api-docs/openapi.json` | Raw OpenAPI 3.0 specification | No |
-| `POST` | `/admin/routes` | Create or update route mapping | **Yes** (`x-api-key`) |
-| `GET` | `/admin/routes` | List all dynamic route mappings | **Yes** (`x-api-key`) |
-| `GET` | `/admin/routes/{*key}` | Fetch details of a specific route | **Yes** (`x-api-key`) |
-| `DELETE` | `/admin/routes/{*key}` | Delete a route mapping | **Yes** (`x-api-key`) |
+| `POST` | `/admin/api/routes` | Create or update route mapping | **Yes** (`x-api-key`) |
+| `GET` | `/admin/api/routes` | List all dynamic route mappings | **Yes** (`x-api-key`) |
+| `GET` | `/admin/api/routes/{*key}` | Fetch details of a specific route | **Yes** (`x-api-key`) |
+| `DELETE` | `/admin/api/routes/{*key}` | Delete a route mapping | **Yes** (`x-api-key`) |
 | `ANY` | `/{*key}` | Public proxy handler | No |
 
 ---
 
 ### 1. Create or Update Route
 
-`POST /admin/routes`
+`POST /admin/api/routes`
 
 > **Key Format Rules:**
 > - `key` must be a path identifier or slug (e.g. `webhook`, `payment-api`, `auth`).
@@ -192,7 +194,7 @@ x-api-key: <ADMIN_TOKEN>
 
 ### 2. List All Routes
 
-`GET /admin/routes`
+`GET /admin/api/routes`
 
 **Headers:**
 ```http
@@ -221,9 +223,9 @@ x-api-key: <ADMIN_TOKEN>
 
 ### 3. Get Route Details
 
-`GET /admin/routes/{*key}`
+`GET /admin/api/routes/{*key}`
 
-Fetch a specific route mapping by its key (e.g. `/admin/routes/webhook-test`).
+Fetch a specific route mapping by its key (e.g. `/admin/api/routes/webhook-test`).
 
 **Headers:**
 ```http
@@ -246,9 +248,9 @@ x-api-key: <ADMIN_TOKEN>
 
 ### 4. Delete Route
 
-`DELETE /admin/routes/{*key}`
+`DELETE /admin/api/routes/{*key}`
 
-Delete a route mapping by its key (e.g. `/admin/routes/webhook-test`).
+Delete a route mapping by its key (e.g. `/admin/api/routes/webhook-test`).
 
 **Headers:**
 ```http

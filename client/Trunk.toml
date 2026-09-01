@@ -1,7 +1,7 @@
 [build]
 target = "index.html"
 dist = "dist"
-public_url = "/admin/ui/"
+public_url = "/admin/dashboard/"
 
 [serve]
 port = 3000

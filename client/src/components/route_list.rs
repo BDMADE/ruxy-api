@@ -1,6 +1,7 @@
 use crate::api::{api_delete, api_get};
 use crate::auth::use_auth;
 use crate::models::{ApiListResponse, ApiResponse};
+use crate::utils::{copy_to_clipboard, get_base_url};
 use leptos::*;
 use leptos_router::*;
 
@@ -11,12 +12,15 @@ pub fn RouteList() -> impl IntoView {
     let (page_size, set_page_size) = create_signal(25);
     let (current_page, set_current_page) = create_signal(1);
     let (reload, set_reload) = create_signal(0);
+    let (copied_key, set_copied_key) = create_signal(Option::<String>::None);
+
+    let base_url = get_base_url();
 
     let routes = create_local_resource(
         move || (auth.token.get(), reload.get()),
         move |(token, _)| async move {
             if let Some(t) = token {
-                api_get::<ApiListResponse>("/admin/routes", Some(&t))
+                api_get::<ApiListResponse>("/admin/api/routes", Some(&t))
                     .await
                     .map(|r| r.data)
             } else {
@@ -63,7 +67,7 @@ pub fn RouteList() -> impl IntoView {
             let auth_token = auth.token.get_untracked();
             spawn_local(async move {
                 if let Some(t) = auth_token {
-                    match api_delete::<ApiResponse>(&format!("/admin/routes/{}", key), Some(&t))
+                    match api_delete::<ApiResponse>(&format!("/admin/api/routes/{}", key), Some(&t))
                         .await
                     {
                         Ok(_) => set_reload.update(|n| *n += 1),
@@ -76,11 +80,28 @@ pub fn RouteList() -> impl IntoView {
         }
     };
 
+    let copy_url = move |key: String, full_url: String| {
+        copy_to_clipboard(&full_url);
+        set_copied_key.set(Some(key.clone()));
+        set_timeout(
+            move || {
+                set_copied_key.update(|current| {
+                    if let Some(k) = current {
+                        if k == &key {
+                            *current = None;
+                        }
+                    }
+                });
+            },
+            std::time::Duration::from_millis(2000),
+        );
+    };
+
     view! {
         <div>
             <div style="display:flex; justify-content:space-between; margin-bottom: 24px;">
                 <h2>"Routes"</h2>
-                <A href="/admin/ui/routes/new" class="btn">"+ Add Route"</A>
+                <A href="/admin/dashboard/routes/new" class="btn">"+ Add Route"</A>
             </div>
 
             <div class="card">
@@ -100,27 +121,62 @@ pub fn RouteList() -> impl IntoView {
                         <thead>
                             <tr>
                                 <th>"Key"</th>
+                                <th>"Pseudo URL"</th>
                                 <th>"Target URL"</th>
                                 <th>"Actions"</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {move || paginated_routes.get().into_iter().map(|route| {
-                                let key_clone = route.key.clone();
-                                let key_for_delete = route.key.clone();
-                                view! {
-                                    <tr>
-                                        <td>{route.key}</td>
-                                        <td>{route.value}</td>
-                                        <td>
-                                            <span style="margin-right: 8px;">
-                                                <A href=format!("/admin/ui/routes/{}/edit", key_clone)>"✏️"</A>
-                                            </span>
-                                            <button style="background:none; border:none; cursor:pointer;" on:click=move |_| delete_route(key_for_delete.clone())>"🗑️"</button>
-                                        </td>
-                                    </tr>
-                                }
-                            }).collect_view()}
+                            {
+                                let base = base_url.clone();
+                                move || paginated_routes.get().into_iter().map(|route| {
+                                    let key_clone = route.key.clone();
+                                    let key_for_delete = route.key.clone();
+                                    let key_for_copy = route.key.clone();
+                                    let pseudo_url = format!("{}/{}", base, route.key);
+                                    let pseudo_url_for_copy = pseudo_url.clone();
+                                    let current_key_for_class = route.key.clone();
+                                    let current_key_for_text = route.key.clone();
+
+                                    view! {
+                                        <tr>
+                                            <td>{route.key}</td>
+                                            <td>
+                                                <div class="pseudo-url-container">
+                                                    <span class="pseudo-url-code">{pseudo_url}</span>
+                                                    <button
+                                                        type="button"
+                                                        class=move || {
+                                                            if copied_key.get().as_deref() == Some(&current_key_for_class) {
+                                                                "btn-icon copied"
+                                                            } else {
+                                                                "btn-icon"
+                                                            }
+                                                        }
+                                                        title="Copy Pseudo URL"
+                                                        on:click=move |_| copy_url(key_for_copy.clone(), pseudo_url_for_copy.clone())
+                                                    >
+                                                        {move || {
+                                                            if copied_key.get().as_deref() == Some(&current_key_for_text) {
+                                                                "✓ Copied"
+                                                            } else {
+                                                                "📋 Copy"
+                                                            }
+                                                        }}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td>{route.value}</td>
+                                            <td>
+                                                <span style="margin-right: 8px;">
+                                                    <A href=format!("/admin/dashboard/routes/{}/edit", key_clone)>"✏️"</A>
+                                                </span>
+                                                <button style="background:none; border:none; cursor:pointer;" on:click=move |_| delete_route(key_for_delete.clone())>"🗑️"</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                }).collect_view()
+                            }
                         </tbody>
                     </table>
 
