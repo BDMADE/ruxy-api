@@ -1,0 +1,91 @@
+:root {
+  --bg-primary: #0f0f23;
+  --bg-card: rgba(255, 255, 255, 0.05);
+  --accent: #6c63ff;
+  --accent-hover: #7c74ff;
+  --text-primary: #e0e0e0;
+  --text-secondary: #8888aa;
+  --border: rgba(255, 255, 255, 0.1);
+  --danger: #ff4d6a;
+  --success: #00d68f;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+}
+
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+}
+
+.btn {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 14px;
+}
+
+.btn:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn-danger {
+  background-color: var(--danger);
+}
+
+.input {
+  width: 100%;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  color: var(--text-secondary);
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 16px;
+  border-radius: 4px;
+  background-color: var(--bg-card);
+  border-left: 4px solid var(--success);
+  z-index: 1000;
+}
+
+.toast.error {
+  border-left-color: var(--danger);
+}

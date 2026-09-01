@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 pub struct AppState {
     pub redis: ConnectionManager,
     pub admin_token: String,
+    pub admin_password: String,
     pub client: reqwest::Client,
     pub slack_webhook_url: Option<String>,
     pub slack_rate_limits: std::sync::Arc<dashmap::DashMap<String, std::time::Instant>>,

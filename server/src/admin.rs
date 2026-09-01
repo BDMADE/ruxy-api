@@ -9,6 +9,65 @@ use axum::{
     Json,
 };
 use redis::AsyncCommands;
+use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
+use utoipa::ToSchema;
+
+#[derive(Deserialize, ToSchema)]
+pub struct LoginRequest {
+    pub password: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct LoginResponse {
+    pub success: bool,
+    pub token: Option<String>,
+    pub message: String,
+}
+
+/// Authenticate admin using dashboard password
+#[utoipa::path(
+    post,
+    path = "/admin/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 401, description = "Invalid credentials", body = LoginResponse)
+    )
+)]
+pub async fn login(
+    State(state): State<AppState>,
+    Json(payload): Json<LoginRequest>,
+) -> impl IntoResponse {
+    let is_valid = payload
+        .password
+        .as_bytes()
+        .ct_eq(state.admin_password.as_bytes())
+        .unwrap_u8()
+        == 1;
+
+    if is_valid {
+        (
+            StatusCode::OK,
+            Json(LoginResponse {
+                success: true,
+                token: Some(state.admin_token.clone()),
+                message: "Login successful".into(),
+            }),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(LoginResponse {
+                success: false,
+                token: None,
+                message: "Invalid password".into(),
+            }),
+        )
+            .into_response()
+    }
+}
 
 /// Create or update a route mapping
 #[utoipa::path(
